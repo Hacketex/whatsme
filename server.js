@@ -82,18 +82,23 @@ app.post('/send-notification', (req, res) => {
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
+    // Validate request
+    if (!username || !password) {
+        console.log(req.body);
+        return res.status(400).send('Username and password are required');
+    }
+
     db.query('SELECT * FROM users WHERE username = ?', [username], (err, results) => {
         if (err) throw err;
         if (results.length === 0) return res.status(400).send('User not found');
 
         const user = results[0];
-        
-        // Plain password comparison for testing purposes
+
+        // Compare password (in production, ensure proper password hashing)
         if (password === user.password) {
-            // Fetch user's previous messages
             db.query(
                 'SELECT content, timestamp FROM messages WHERE user_id = ? ORDER BY timestamp',
-                [user.id],
+                [user.id], 
                 (err, messages) => {
                     if (err) throw err;
 
@@ -101,7 +106,7 @@ app.post('/login', (req, res) => {
                         userId: user.id,
                         username: user.username,
                         profilePic: user.profile_pic,
-                        messages // Send previous messages along with user data
+                        messages
                     });
                 }
             );
@@ -111,33 +116,76 @@ app.post('/login', (req, res) => {
     });
 });
 
+
+
+// // Store Message in Database & Emit Notifications
+// io.on('connection', (socket) => {
+//     console.log('A user connected:', socket.id);
+
+//     socket.on('message', (msg) => {
+//         const { userId, username, content } = msg;
+
+//         // Insert message into database
+//         db.query(
+//             'INSERT INTO messages (user_id, content) VALUES (?, ?)',
+//             [userId, content],
+//             (err) => {
+//                 if (err) throw err;
+
+//                 // Broadcast message to all clients
+//                 io.emit('message', { username, content });
+//             }
+//         );
+
+//         // Get the recipient's push subscription and send notification
+//         db.query('SELECT subscription FROM users WHERE id = ?', [userId], (err, results) => {
+//             if (err) throw err;
+//             if (results.length > 0) {
+//                 const subscription = JSON.parse(results[0].subscription);
+//                 const payload = JSON.stringify({
+//                     title: 'New Message!',
+//                     body: `${username}: ${content}`,
+//                     url: 'http://localhost:3000/index.html'
+//                 });
+
+//                 webPush.sendNotification(subscription, payload).catch(err => console.error(err));
+//             }
+//         });
+//     });
+
+//     socket.on('disconnect', () => {
+//         console.log('User disconnected:', socket.id);
+//     });
+// });
+
 // Store Message in Database & Emit Notifications
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
+    // Message received from client
     socket.on('message', (msg) => {
-        const { userId, username, content } = msg;
+        const { senderId, receiverId, content } = msg;
 
         // Insert message into database
         db.query(
-            'INSERT INTO messages (user_id, content) VALUES (?, ?)',
-            [userId, content],
+            'INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)',
+            [senderId, receiverId, content],
             (err) => {
                 if (err) throw err;
 
-                // Broadcast message to all clients
-                io.emit('message', { username, content });
+                // Broadcast message to the receiver only
+                io.emit('message', { senderId, receiverId, content });
             }
         );
 
-        // Get the recipient's push subscription and send notification
-        db.query('SELECT subscription FROM users WHERE id = ?', [userId], (err, results) => {
+        // Get the recipient's push subscription and send notification (if receiver has a subscription)
+        db.query('SELECT subscription FROM users WHERE id = ?', [receiverId], (err, results) => {
             if (err) throw err;
             if (results.length > 0) {
                 const subscription = JSON.parse(results[0].subscription);
                 const payload = JSON.stringify({
                     title: 'New Message!',
-                    body: `${username}: ${content}`,
+                    body: `${msg.senderUsername}: ${msg.content}`,
                     url: 'http://localhost:3000/index.html'
                 });
 
@@ -146,10 +194,27 @@ io.on('connection', (socket) => {
         });
     });
 
+    // User disconnect
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
     });
 });
+
+// Fetch Messages between two users (e.g., in login)
+app.get('/messages/:userId/:receiverId', (req, res) => {
+    const { userId, receiverId } = req.params;
+
+    db.query(
+        'SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY timestamp',
+        [userId, receiverId, receiverId, userId], 
+        (err, results) => {
+            if (err) throw err;
+
+            res.json(results);
+        }
+    );
+});
+
 
 // Listen on Port 3000
 server.listen(3000, () => {

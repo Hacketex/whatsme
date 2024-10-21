@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,57 +8,137 @@
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="push-notifications.js"></script> <!-- Your push notifications -->
     <script defer src="service-worker.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; }
-        #message-input { margin-top: 10px; }
-    </style>
+    <link rel="stylesheet" href="style.css"> <!-- Link to external CSS -->
 </head>
+
 <body>
-    <h1>Chat Application</h1>
-    <button id="enable-notifications">Enable Notifications</button>
-    <script src="/push-notifications.js"></script>
-    <p>Logged in as: <span id="username"></span></p>
-    <button onclick="logout()">Logout</button>
-    <div id="messages"></div>
-    <input id="message-input" type="text" placeholder="Type a message...">
-    <button id="send-button">Send</button>
-    
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="profile-section">
+                <img src="profile.jpg" alt="Profile Picture" id="profile-pic">
+                <div class="user-info">
+                    <p id="username-display">John Doe</p>
+                    <p id="last-seen">Last seen at 10:45 AM</p>
+                </div>
+            </div>
+            <button id="enable-notifications" class="notification-button">Enable Notifications</button>
+        </div>
+
+        <div id="messages-container" class="chat-messages"></div>
+        <p id="typing-indicator" style="display: none;">Someone is typing...</p>
+
+        <div class="chat-footer">
+            <input id="message-input" type="text" placeholder="Type a message...">
+            <button id="send-button" class="send-button">Send</button>
+        </div>
+        <button onclick="logout()" class="logout-button">Logout</button>
+    </div>
+
     <script>
         const socket = io();
-
-        // Check if the user is logged in
-        const userId = localStorage.getItem('userId');
-        const username = localStorage.getItem('username');
-
-        const messages = document.getElementById('messages');
+        const messagesContainer = document.getElementById('messages-container');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const username = localStorage.getItem('username') || 'Anonymous';
 
+        document.getElementById('username-display').textContent = username;
 
-        // Send message to server with username
+        // Fetch and display old messages when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const messagesContainer = document.getElementById('messages-container');
+            const loggedInUserId = localStorage.getItem('userId'); // The logged-in user's ID
+            let chatPartnerId;
+            let chatPartnerName;
+
+            // Set chat partner ID and name dynamically based on the logged-in user
+            if (loggedInUserId == 9) {
+                chatPartnerId = 10;  // Jaanvi's ID if Pratik is logged in
+                chatPartnerName = 'Jaanvi';
+            } else if (loggedInUserId == 10) {
+                chatPartnerId = 9;  // Pratik's ID if Jaanvi is logged in
+                chatPartnerName = 'Pratik';
+            }
+
+            // Fetch and display messages between logged-in user and chat partner
+            fetch(`/messages/${loggedInUserId}/${chatPartnerId}`)
+                .then(res => res.json())
+                .then(messages => {
+                    messagesContainer.innerHTML = ''; // Clear the container before adding messages
+
+                    messages.forEach(msg => {
+                        const messageElement = document.createElement('div');
+                        messageElement.classList.add('message');
+
+                        // Differentiate between sender and receiver
+                        let sender;
+                        if (msg.sender_id == loggedInUserId) {
+                            sender = 'You';  // Display 'You' for the logged-in user's messages
+                        } else {
+                            sender = chatPartnerName;  // Display chat partner's name for their messages
+                        }
+
+                        // Handle message content based on content_type
+                        let messageContent = '';
+                        if (msg.content_type === 'text') {
+                            messageContent = `<strong>${sender}</strong>: ${msg.content}`;
+                        } else if (msg.content_type === 'image') {
+                            messageContent = `<strong>${sender}</strong>: <br><img src="${msg.file_path}" alt="Image" style="max-width: 300px;">`;
+                        } else if (msg.content_type === 'file') {
+                            messageContent = `<strong>${sender}</strong>: <br><a href="${msg.file_path}" target="_blank">Download file</a>`;
+                        }
+
+                        messageElement.innerHTML = `${messageContent}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
+                        messagesContainer.appendChild(messageElement);
+                    });
+
+                    // Auto-scroll to the bottom after loading messages
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                })
+                .catch(error => {
+                    console.error('Error fetching messages:', error);
+                });
+        });
+        // Send a message to the server
         sendButton.addEventListener('click', () => {
             const message = {
-                userId,
                 username,
-                content: messageInput.value
+                content: messageInput.value,
+                timestamp: new Date().toLocaleTimeString()
             };
             socket.emit('message', message);
             messageInput.value = '';
         });
 
-        // Receive message from server
+        // Receive a message from the server
         socket.on('message', (msg) => {
-            const messageElement = document.createElement('p');
-            messageElement.textContent = `${msg.username}: ${msg.text}`;
-            messages.appendChild(messageElement);
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.innerHTML = `<strong>${msg.username}</strong>: ${msg.content}<br><span class="timestamp">${msg.timestamp}</span>`;
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        });
+
+        // Typing indicator
+        messageInput.addEventListener('input', () => {
+            socket.emit('typing', username);
+        });
+
+        socket.on('typing', (user) => {
+            typingIndicator.textContent = `${user} is typing...`;
+            typingIndicator.style.display = 'block';
+            setTimeout(() => {
+                typingIndicator.style.display = 'none';
+            }, 2000);
         });
 
         // Logout function
         function logout() {
             localStorage.removeItem('username');
+            localStorage.clear();
             window.location.href = '/login.html';
         }
     </script>
 </body>
+
 </html>

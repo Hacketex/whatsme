@@ -9,13 +9,49 @@
     <h2>Login</h2>
     <input type="text" id="username" placeholder="Username">
     <input type="password" id="password" placeholder="Password">
-    <button onclick="login()">Login</button>
+    <button onclick="login(document.getElementById('username').value, document.getElementById('password').value)">Login</button>
     <p id="error" style="color: red;"></p>
 
     <script src="/public/push-notifications.js"></script>
     <script src="/public/service-worker.js"></script>
     
+    <!-- <script>
+// Simulate login and fetch messages
+        function login(username, password) {
+            fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })  // Ensure this matches the server expectation
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text) });  // Extract error message from response
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.userId) {
+                    localStorage.setItem('userId', data.userId);
+                    localStorage.setItem('username', data.username);
+
+                    // Redirect to index.html after successful login
+                    window.location.href = '/index.html';
+                } else {
+                    document.getElementById('error').textContent = 'Login failed';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('error').textContent = 'Login failed: ' + error.message;
+            });
+        }
+
+
+
+    </script> -->
+
     <script>
+        // Simulate login and fetch messages
         function login() {
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
@@ -25,26 +61,26 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             })
-            .then(response => response.ok ? response.json() : Promise.reject())
-            .then(data => {
-                localStorage.setItem('userId', data.userId);
-                localStorage.setItem('username', data.username);
-
-                const messages = document.getElementById('messages');
-                if (messages) {
-                    data.messages.forEach(msg => {
-                        const messageElement = document.createElement('p');
-                        messageElement.textContent = `${msg.timestamp}: ${msg.content}`;
-                        messages.appendChild(messageElement);
-                    });
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => { throw new Error(text); });
                 }
-
-                window.location.href = '/index.html';
+                return response.json();
             })
-            .catch(() => {
-                document.getElementById('error').textContent = 'Login failed';
+            .then(data => {
+                if (data.userId) {
+                    localStorage.setItem('userId', data.userId);
+                    localStorage.setItem('username', data.username);
+                    window.location.href = '/index.html';  // Redirect to the chat page after successful login
+                } else {
+                    document.getElementById('error').textContent = 'Login failed';
+                }
+            })
+            .catch(error => {
+                document.getElementById('error').textContent = 'Login failed: ' + error.message;
             });
         }
     </script>
+        
 </body>
 </html>
