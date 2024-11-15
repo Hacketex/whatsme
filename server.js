@@ -54,6 +54,29 @@ app.post('/subscribe', (req, res) => {
     );
 });
 
+// Route to get username by user ID
+app.get('/get-username', (req, res) => {
+    const userId = req.query.id;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const query = 'SELECT username FROM users WHERE id = ?';
+    db.query(query, [userId], (err, results) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({ username: results[0].username });
+    });
+});
+
 
 app.post('/send-notification', (req, res) => {
     const payload = JSON.stringify({

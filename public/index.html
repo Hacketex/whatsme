@@ -109,83 +109,75 @@
     
         // Send a message via the form submission
         sendMessageForm.addEventListener('submit', (e) => {
-            e.preventDefault();  // Prevent page reload on form submit
-    
-            const messageText = messageInput.value.trim();  // Get the message text from the input field
-            if (messageText === '') return;  // Don't send empty messages
-    
-            const loggedInUserId = localStorage.getItem('userId') || defaultUserId;
-            let chatPartnerId = (loggedInUserId == 9) ? 10 : 9;  // Define chat partner dynamically
-    
+            e.preventDefault(); // Prevent page reload on form submit
+
+            const messageText = messageInput.value.trim(); // Get the message text from the input field
+            if (messageText === '') return; // Don't send empty messages
+
             const newMessage = {
                 sender_id: loggedInUserId,
-                receiver_id: chatPartnerId,
+                receiver_id: (loggedInUserId == 9) ? 10 : 9, // Define chat partner dynamically
                 content: messageText,
                 content_type: 'text',
-                timestamp: new Date().toISOString()  // Get the current time in ISO format
+                timestamp: new Date().toISOString() // Get the current time in ISO format
             };
-    
+
             // Send the message to the server via POST request
             fetch(`/send-message`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(newMessage)  // Send the message object as JSON
+                body: JSON.stringify(newMessage) // Send the message object as JSON
             })
-            .then(res => {
-                if (!res.ok) {
-                    return res.text().then(text => { throw new Error(text) });  // Log the raw text response
-                }
-                return res.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    // Wait for the backend to confirm successful storage of the message
-                    const messageElement = document.createElement('div');
-                    messageElement.classList.add('message');
-                    messageElement.innerHTML = `<strong>You</strong>: ${newMessage.content}<br>
-                        <span class="timestamp">${new Date(newMessage.timestamp).toLocaleString()}</span>`;
-                    messagesContainer.appendChild(messageElement);
-
-                    // Auto-scroll to the bottom
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-                    // Clear the input field after sending
-                    messageInput.value = '';
-                } else {
-                    console.error('Error sending message:', data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error sending message:', error);
-            });
+                .then(res => {
+                    if (!res.ok) {
+                        return res.text().then(text => { throw new Error(text); }); // Log the raw text response
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // Clear the input field after sending
+                        messageInput.value = '';
+                    } else {
+                        console.error('Error sending message:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending message:', error);
+                });
         });
+
+        async function getUserNameById(userId) {
+            try {
+                const response = await fetch(`/get-username?id=${userId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Error fetching username: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                return data.username;
+            } catch (error) {
+                console.error("Failed to get username:", error);
+            }
+        }
     
-        // Receive a message from the server
-        // socket.on('message', (msg) => {
-        //     // Check if the message already exists to avoid duplicates
-        //     if (!document.querySelector(`.message[data-id="${msg.id}"]`)) {
-        //         const messageElement = document.createElement('div');
-        //         messageElement.classList.add('message');
-        //         messageElement.dataset.id = msg.id;  // Set a unique ID for each message element
-        //         messageElement.innerHTML = `<strong>${msg.username}</strong>: ${msg.content}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
-        //         messagesContainer.appendChild(messageElement);
-        //         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        //     }
-        // });
-    
-        socket.on('message', (msg) => {
-            const sender = msg.sender_id === loggedInUserId ? 'You' : getUserNameById(msg.sender_id);
-            const messageContent = `${sender}: ${msg.content}`;
+        socket.on('message', async (msg) => {
+            // Avoid duplicate "You" messages
+            const isSender = msg.sender_id === loggedInUserId;
+            const sender = isSender ? 'You' : await getUserNameById(msg.sender_id);
+
+            const messageContent = `<strong>${sender}</strong>: ${msg.content}`;
             const timestamp = new Date(msg.timestamp).toLocaleString();
 
             const messageElement = document.createElement('div');
             messageElement.classList.add('message');
-            messageElement.innerHTML = `<strong>${sender}</strong>: ${msg.content}<br><span class="timestamp">${timestamp}</span>`;
+            messageElement.innerHTML = `${messageContent}<br><span class="timestamp">${timestamp}</span>`;
 
             messagesContainer.appendChild(messageElement);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;  // Auto-scroll to the bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Auto-scroll to the bottom
         });
 
         // Typing indicator
