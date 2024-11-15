@@ -28,29 +28,44 @@
         <p id="typing-indicator" style="display: none;">Someone is typing...</p>
 
         <div class="chat-footer">
-            <input id="message-input" type="text" placeholder="Type a message...">
-            <button id="send-button" class="send-button">Send</button>
-        </div>
+            <form id="send-message-form">
+                <input type="text" id="message-input" placeholder="Type a message" />
+                <button type="submit" id="send-button">Send</button>
+            </form>
+        </div>        
         <button onclick="logout()" class="logout-button">Logout</button>
     </div>
 
     <script>
-        const socket = io();
+        // const socket = io();
+        const socket = io({
+            reconnectionAttempts: Infinity,
+            timeout: 10000,
+        });
         const messagesContainer = document.getElementById('messages-container');
         const messageInput = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
+        const sendMessageForm = document.getElementById('send-message-form');
         const typingIndicator = document.getElementById('typing-indicator');
         const username = localStorage.getItem('username') || 'Anonymous';
-
+        const loggedInUserId = localStorage.getItem('userId');
+    
         document.getElementById('username-display').textContent = username;
 
+        // Now you can use `socket` to handle events
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.log('Connection failed:', error);
+        });
+    
         // Fetch and display old messages when the page loads
         document.addEventListener('DOMContentLoaded', () => {
-            const messagesContainer = document.getElementById('messages-container');
-            const loggedInUserId = localStorage.getItem('userId'); // The logged-in user's ID
+            const loggedInUserId = localStorage.getItem('userId') || 'Anonymous'; // The logged-in user's ID
             let chatPartnerId;
             let chatPartnerName;
-
+    
             // Set chat partner ID and name dynamically based on the logged-in user
             if (loggedInUserId == 9) {
                 chatPartnerId = 10;  // Jaanvi's ID if Pratik is logged in
@@ -59,8 +74,7 @@
                 chatPartnerId = 9;  // Pratik's ID if Jaanvi is logged in
                 chatPartnerName = 'Pratik';
             }
-
-            // Fetch and display messages between logged-in user and chat partner
+    
             fetch(`/messages/${loggedInUserId}/${chatPartnerId}`)
                 .then(res => res.json())
                 .then(messages => {
@@ -70,15 +84,8 @@
                         const messageElement = document.createElement('div');
                         messageElement.classList.add('message');
 
-                        // Differentiate between sender and receiver
-                        let sender;
-                        if (msg.sender_id == loggedInUserId) {
-                            sender = 'You';  // Display 'You' for the logged-in user's messages
-                        } else {
-                            sender = chatPartnerName;  // Display chat partner's name for their messages
-                        }
+                        let sender = (msg.sender_id == loggedInUserId) ? 'You' : (chatPartnerName || 'Unknown');
 
-                        // Handle message content based on content_type
                         let messageContent = '';
                         if (msg.content_type === 'text') {
                             messageContent = `<strong>${sender}</strong>: ${msg.content}`;
@@ -99,31 +106,93 @@
                     console.error('Error fetching messages:', error);
                 });
         });
-        // Send a message to the server
-        sendButton.addEventListener('click', () => {
-            const message = {
-                username,
-                content: messageInput.value,
-                timestamp: new Date().toLocaleTimeString()
+    
+        // Send a message via the form submission
+        sendMessageForm.addEventListener('submit', (e) => {
+            e.preventDefault();  // Prevent page reload on form submit
+    
+            const messageText = messageInput.value.trim();  // Get the message text from the input field
+            if (messageText === '') return;  // Don't send empty messages
+    
+            const loggedInUserId = localStorage.getItem('userId') || defaultUserId;
+            let chatPartnerId = (loggedInUserId == 9) ? 10 : 9;  // Define chat partner dynamically
+    
+            const newMessage = {
+                sender_id: loggedInUserId,
+                receiver_id: chatPartnerId,
+                content: messageText,
+                content_type: 'text',
+                timestamp: new Date().toISOString()  // Get the current time in ISO format
             };
-            socket.emit('message', message);
-            messageInput.value = '';
-        });
+    
+            // Send the message to the server via POST request
+            fetch(`/send-message`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(newMessage)  // Send the message object as JSON
+            })
+            .then(res => {
+                if (!res.ok) {
+                    return res.text().then(text => { throw new Error(text) });  // Log the raw text response
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Wait for the backend to confirm successful storage of the message
+                    const messageElement = document.createElement('div');
+                    messageElement.classList.add('message');
+                    messageElement.innerHTML = `<strong>You</strong>: ${newMessage.content}<br>
+                        <span class="timestamp">${new Date(newMessage.timestamp).toLocaleString()}</span>`;
+                    messagesContainer.appendChild(messageElement);
 
+                    // Auto-scroll to the bottom
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+                    // Clear the input field after sending
+                    messageInput.value = '';
+                } else {
+                    console.error('Error sending message:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+            });
+        });
+    
         // Receive a message from the server
+        // socket.on('message', (msg) => {
+        //     // Check if the message already exists to avoid duplicates
+        //     if (!document.querySelector(`.message[data-id="${msg.id}"]`)) {
+        //         const messageElement = document.createElement('div');
+        //         messageElement.classList.add('message');
+        //         messageElement.dataset.id = msg.id;  // Set a unique ID for each message element
+        //         messageElement.innerHTML = `<strong>${msg.username}</strong>: ${msg.content}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
+        //         messagesContainer.appendChild(messageElement);
+        //         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        //     }
+        // });
+    
         socket.on('message', (msg) => {
+            const sender = msg.sender_id === loggedInUserId ? 'You' : getUserNameById(msg.sender_id);
+            const messageContent = `${sender}: ${msg.content}`;
+            const timestamp = new Date(msg.timestamp).toLocaleString();
+
             const messageElement = document.createElement('div');
             messageElement.classList.add('message');
-            messageElement.innerHTML = `<strong>${msg.username}</strong>: ${msg.content}<br><span class="timestamp">${msg.timestamp}</span>`;
+            messageElement.innerHTML = `<strong>${sender}</strong>: ${msg.content}<br><span class="timestamp">${timestamp}</span>`;
+
             messagesContainer.appendChild(messageElement);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;  // Auto-scroll to the bottom
         });
 
         // Typing indicator
         messageInput.addEventListener('input', () => {
             socket.emit('typing', username);
         });
-
+    
         socket.on('typing', (user) => {
             typingIndicator.textContent = `${user} is typing...`;
             typingIndicator.style.display = 'block';
@@ -131,7 +200,7 @@
                 typingIndicator.style.display = 'none';
             }, 2000);
         });
-
+    
         // Logout function
         function logout() {
             localStorage.removeItem('username');
@@ -139,6 +208,7 @@
             window.location.href = '/login.html';
         }
     </script>
+    
 </body>
 
 </html>

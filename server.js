@@ -1,4 +1,5 @@
 // server.js
+const moment = require('moment');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -20,8 +21,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
 }));
 
-
-// MySQL Database Configuration
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
@@ -37,17 +36,14 @@ db.connect((err) => {
     console.log('Connected to MySQL database.');
 });
 
-// VAPID keys for Push Notifications
 const publicVapidKey = 'BGgKCQ9Od_ZuexQND6TSsZqa9O52uo82aAh08-YXXbbtC_jzUlKgKcRBMqmBez_xg43tAIo1fL1mI4yRAgXmKrs';
 const privateVapidKey = 'Xn8Z85i4UXAFiDltS1TUY4iqHJFZmtxcNfR-gt1ORFA';
 
 webPush.setVapidDetails('mailto:pratikdhole786@gmail.com', publicVapidKey, privateVapidKey);
 
-// Subscribe endpoint to save the user's push subscription
 app.post('/subscribe', (req, res) => {
     const { subscription, userId } = req.body;
 
-    // Store the subscription object in the database
     db.query(
         'UPDATE users SET subscription = ? WHERE id = ?', 
         [JSON.stringify(subscription), userId], 
@@ -58,7 +54,7 @@ app.post('/subscribe', (req, res) => {
     );
 });
 
-// Retrieve subscription from database and send notification
+
 app.post('/send-notification', (req, res) => {
     const payload = JSON.stringify({
         title: 'New Message!',
@@ -78,11 +74,9 @@ app.post('/send-notification', (req, res) => {
     res.sendStatus(200);
 });
 
-// Login Endpoint
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
-    // Validate request
     if (!username || !password) {
         console.log(req.body);
         return res.status(400).send('Username and password are required');
@@ -94,7 +88,6 @@ app.post('/login', (req, res) => {
 
         const user = results[0];
 
-        // Compare password (in production, ensure proper password hashing)
         if (password === user.password) {
             db.query(
                 'SELECT content, timestamp FROM messages WHERE user_id = ? ORDER BY timestamp',
@@ -116,76 +109,123 @@ app.post('/login', (req, res) => {
     });
 });
 
+app.post('/send-message', (req, res) => {
+    const { sender_id, receiver_id, content, content_type, timestamp } = req.body; 
+
+    console.log('Received message data:', req.body);
+
+    const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+
+    db.query(
+        'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
+        [sender_id, receiver_id, content, content_type, formattedTimestamp],
+        (err, results) => {
+            if (err) {
+                console.error('Error inserting message into the database:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            console.log('Message inserted with ID:', results.insertId);
+
+            io.emit('message', { 
+                sender_id, 
+                receiver_id, 
+                content, 
+                content_type, 
+                timestamp: formattedTimestamp
+            });
+
+            // Notify the receiver if they have a subscription for push notifications
+            db.query('SELECT subscription FROM users WHERE id = ?', [receiver_id], (err, results) => {
+                if (err) {
+                    console.error('Error fetching subscription:', err);
+                    return;
+                }
+            
+                if (results.length > 0) {
+                    const rawSubscription = results[0].subscription;
+                    console.log('Raw subscription data:', rawSubscription);
+                    console.log('Type of raw subscription:', typeof rawSubscription);
+            
+                    let subscription;
+                    try {
+                        // Check if the raw subscription is a string or an object
+                        if (typeof rawSubscription === 'string') {
+                            subscription = JSON.parse(rawSubscription);
+                        } else {
+                            subscription = rawSubscription; // Already an object
+                        }
+                        
+                        if (!subscription || !subscription.endpoint) {
+                            console.error('Invalid subscription object:', subscription);
+                            return;
+                        }
+            
+                        const payload = JSON.stringify({
+                            title: 'New Message!',
+                            body: `${sender_id}: ${content}`,
+                            url: 'http://localhost:3000/index.html'
+                        });
+            
+                        webPush.sendNotification(subscription, payload)
+                        .then(() => console.log('Notification sent successfully'))
+                        .catch(err => {
+                            if (err.statusCode === 410) {
+                                console.error('Subscription has expired. Removing from database.');
+                    
+                                // Remove the expired subscription from the database
+                                db.query('UPDATE users SET subscription = NULL WHERE id = ?', [receiver_id], (err, result) => {
+                                    if (err) {
+                                        console.error('Failed to remove expired subscription:', err);
+                                    } else {
+                                        console.log('Expired subscription removed successfully.');
+                                    }
+                                });
+                            } else {
+                                console.error('Error sending notification:', err);
+                            }
+                        });
+                    } catch (parseError) {
+                        console.error('Failed to parse subscription JSON:', parseError);
+                    }
+                }
+            });            
+
+            res.json({ success: true });
+        }
+    );
+});
 
 
-// // Store Message in Database & Emit Notifications
-// io.on('connection', (socket) => {
-//     console.log('A user connected:', socket.id);
-
-//     socket.on('message', (msg) => {
-//         const { userId, username, content } = msg;
-
-//         // Insert message into database
-//         db.query(
-//             'INSERT INTO messages (user_id, content) VALUES (?, ?)',
-//             [userId, content],
-//             (err) => {
-//                 if (err) throw err;
-
-//                 // Broadcast message to all clients
-//                 io.emit('message', { username, content });
-//             }
-//         );
-
-//         // Get the recipient's push subscription and send notification
-//         db.query('SELECT subscription FROM users WHERE id = ?', [userId], (err, results) => {
-//             if (err) throw err;
-//             if (results.length > 0) {
-//                 const subscription = JSON.parse(results[0].subscription);
-//                 const payload = JSON.stringify({
-//                     title: 'New Message!',
-//                     body: `${username}: ${content}`,
-//                     url: 'http://localhost:3000/index.html'
-//                 });
-
-//                 webPush.sendNotification(subscription, payload).catch(err => console.error(err));
-//             }
-//         });
-//     });
-
-//     socket.on('disconnect', () => {
-//         console.log('User disconnected:', socket.id);
-//     });
-// });
-
-// Store Message in Database & Emit Notifications
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Message received from client
     socket.on('message', (msg) => {
-        const { senderId, receiverId, content } = msg;
+        let messageData;
+        if (typeof msg === 'string') {
+            messageData = JSON.parse(msg);
+        } else {
+            messageData = msg;
+        }
 
-        // Insert message into database
+        const { senderId, receiverId, content } = messageData; // Use messageData instead of msg
+
         db.query(
             'INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)',
             [senderId, receiverId, content],
             (err) => {
                 if (err) throw err;
-
-                // Broadcast message to the receiver only
                 io.emit('message', { senderId, receiverId, content });
             }
         );
 
-        // Get the recipient's push subscription and send notification (if receiver has a subscription)
         db.query('SELECT subscription FROM users WHERE id = ?', [receiverId], (err, results) => {
             if (err) throw err;
             if (results.length > 0) {
                 const subscription = JSON.parse(results[0].subscription);
                 const payload = JSON.stringify({
                     title: 'New Message!',
-                    body: `${msg.senderUsername}: ${msg.content}`,
+                    body: `${messageData.senderUsername}: ${messageData.content}`,
                     url: 'http://localhost:3000/index.html'
                 });
 
@@ -194,13 +234,12 @@ io.on('connection', (socket) => {
         });
     });
 
-    // User disconnect
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
     });
 });
 
-// Fetch Messages between two users (e.g., in login)
+
 app.get('/messages/:userId/:receiverId', (req, res) => {
     const { userId, receiverId } = req.params;
 
@@ -215,8 +254,6 @@ app.get('/messages/:userId/:receiverId', (req, res) => {
     );
 });
 
-
-// Listen on Port 3000
 server.listen(3000, () => {
     console.log('Server is running on http://localhost:3000/login');
 });
