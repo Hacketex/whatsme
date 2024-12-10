@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embedded Website with Search Bar</title>
+    <!-- Link the external CSS file -->
+    <link rel="stylesheet" href="webtest.css">
+</head>
+<body>
+    <div class="header">
+        <h1>My Custom Search</h1>
+        <input type="text" placeholder="Search..." id="customSearch">
+    </div>
+    <iframe class="iframe-container" src="https://www.microbiologyresearch.org/content/journal/jmm"></iframe>
+    <script>
+        // Add functionality to your search bar if needed
+        document.getElementById('customSearch').addEventListener('input', function(event) {
+            console.log('Search value:', event.target.value);
+            // Add search functionality or other features as required
+        });
+    </script>
+</body>
+</html>
