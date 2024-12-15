@@ -3,7 +3,9 @@ const moment = require('moment');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const onlineUsers = new Map(); // Tracks userId -> socket.id mappings
+// const onlineUsers = new Map(); // Tracks userId -> socket.id mappings
+let pendingNotifications = new Map(); 
+
 const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const webPush = require('web-push');  // Add web-push for notifications
@@ -42,56 +44,61 @@ const privateVapidKey = 'Xn8Z85i4UXAFiDltS1TUY4iqHJFZmtxcNfR-gt1ORFA';
 
 webPush.setVapidDetails('mailto:pratikdhole786@gmail.com', publicVapidKey, privateVapidKey);
 
-app.post('/subscribe', (req, res) => {
-    const { subscription, userId } = req.body;
-    if (!subscription || !userId) {
-        return res.status(400).json({ error: 'Subscription and userId are required.' });
-    }
+// app.post('/subscribe', (req, res) => {
+//     const { subscription, userId } = req.body;
+//     if (!subscription || !userId) {
+//         return res.status(400).json({ error: 'Subscription and userId are required.' });
+//     }
 
-    db.query(
-        'UPDATE users SET subscription = ? WHERE id = ?', 
-        [JSON.stringify(subscription), userId], 
-        (err) => {
-            if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({ error: 'Failed to save subscription.' });
-            }
-            res.status(201).json({ message: 'Subscription saved.' });
-        }
-    );
-});
+//     db.query(
+//         'UPDATE users SET subscription = ? WHERE id = ?', 
+//         [JSON.stringify(subscription), userId], 
+//         (err) => {
+//             if (err) {
+//                 console.error('Database error:', err);
+//                 return res.status(500).json({ error: 'Failed to save subscription.' });
+//             }
+//             res.status(201).json({ message: 'Subscription saved.' });
+//         }
+//     );
+// });
 
 
 function handleMessage(data) {
     const { sender_id, receiver_id, content, content_type, timestamp } = data;
 
-    // Log message data for verification
     console.log("Received message data:", data);
 
+    // Check if the receiver is online
     const userSocketId = onlineUsers.get(String(receiver_id));
     if (userSocketId) {
         console.log(`User ${receiver_id} is online with socket ID: ${userSocketId}`);
-        // Send real-time message to the receiver
         io.to(userSocketId).emit('newMessage', { sender_id, content, timestamp });
         console.log(`Message delivered to User ${receiver_id}.`);
+
+        // Send notification only if the user is online
+        io.to(userSocketId).emit('notify', {
+            senderId: sender_id,
+            message: `New message from ${sender_id}`,
+            timestamp
+        });
     } else {
         console.log(`User ${receiver_id} is not online. Notification skipped.`);
-        // Handle push notifications for offline users here
     }
-    
 
-    // Log the current state of online users
     console.log("Current online users array:", JSON.stringify(onlineUsers, null, 2));
 }
 
+
 function sendNotification(userId, payload) {
-    const subscription = onlineUsers.get(userId);
-    if (subscription) {
-        webPush.sendNotification(subscription, JSON.stringify(payload))
-            .then(() => console.log(`Notification sent to User ${userId}`))
-            .catch(err => console.error('Push Notification Error:', err));
+    const socketId = onlineUsers.get(userId);  // Get socketId from onlineUsers map
+    console.log(`Checking if user ${userId} is online: ${socketId ? 'Yes' : 'No'}`);
+    if (socketId) {
+        // The user is online, send notification
+        io.to(socketId).emit('pushNotification', payload);
+        console.log(`Notification sent to User ${userId}`);
     } else {
-        console.log(`User ${userId} is not subscribed.`);
+        console.log(`User ${userId} is not online. Notification skipped.`);
     }
 }
 
@@ -172,36 +179,37 @@ app.post('/login', (req, res) => {
         }
     });
 });
+let onlineUsers = new Map(); 
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
     // Fallback mechanism to detect idle connections
-    const idleTimeout = setTimeout(() => {
-        if (![...onlineUsers.values()].includes(socket.id)) {
-            console.log(`Socket ${socket.id} disconnected due to idle timeout.`);
-            socket.disconnect();
-        }
-    }, 10000); // 10 seconds timeout for user registration
+    // const idleTimeout = setTimeout(() => {
+    //     if (![...onlineUsers.values()].includes(socket.id)) {
+    //         console.log(`Socket ${socket.id} disconnected due to idle timeout.`);
+    //         socket.disconnect();
+    //     }
+    // }, 600000); // 10 seconds timeout for user registration
 
     // Listen for a custom event to register user on connection
     socket.on('userConnected', (userId) => {
-        clearTimeout(idleTimeout); // Cancel timeout when a valid user connects
         if (userId) {
             onlineUsers.set(userId, socket.id);
             console.log(`User ${userId} is now online with socket ID: ${socket.id}`);
             console.log('Current online users:', [...onlineUsers.entries()]);
         }
     });
+
     
     
 
     // Join room logic
-    socket.on('joinRoom', ({ userId, roomId }) => {
-        console.log(`User ${userId} joined room ${roomId}`);
-        socket.join(roomId);
-        socket.to(roomId).emit('userJoined', { userId, roomId });
-    });
+    // socket.on('joinRoom', ({ userId, roomId }) => {
+    //     console.log(`User ${userId} joined room ${roomId}`);
+    //     socket.join(roomId);
+    //     socket.to(roomId).emit('userJoined', { userId, roomId });
+    // });
 
     socket.on('sendMessage', (data) => {
         console.log('Message received:', data);
@@ -209,6 +217,19 @@ io.on('connection', (socket) => {
         // Emit the message to the room
         io.to(data.roomId).emit('newMessage', data);
         socket.emit('messageSent', { success: true, message: 'Message sent!' });
+
+        socket.on('sendMessage', (messageData) => {
+            const { sender_id, receiver_id } = messageData;
+    
+            // Check if receiver is online
+            if (onlineUsers.has(receiver_id)) {
+                const receiverSocketId = onlineUsers.get(receiver_id);
+                io.to(receiverSocketId).emit('newMessage', messageData); // Send message
+                console.log(`Message sent to user ${receiver_id}`);
+            } else {
+                console.log(`User ${receiver_id} is not online. Notification skipped.`);
+            }
+        });
 
         // Notify the receiver if online
         const receiverSocketId = onlineUsers.get(data.receiverId);
@@ -225,12 +246,13 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        const userId = [...onlineUsers.entries()].find(([key, value]) => value === socket.id)?.[0];
-        if (userId) {
-            onlineUsers.delete(userId);
-            console.log(`User ${userId} disconnected.`);
-        } else {
-            console.log(`Unknown user disconnected. Socket ID: ${socket.id}`);
+        // Find user by socket ID and remove them from online users map
+        for (let [userId, socketId] of onlineUsers.entries()) {
+            if (socketId === socket.id) {
+                onlineUsers.delete(userId);
+                console.log(`User ${userId} disconnected.`);
+                break;
+            }
         }
         console.log('Current online users:', [...onlineUsers.entries()]);
     });
