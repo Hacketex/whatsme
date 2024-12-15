@@ -69,8 +69,8 @@ function handleMessage(data) {
 
     console.log("Received message data:", data);
 
-    // Check if the receiver is online
     const userSocketId = onlineUsers.get(String(receiver_id));
+
     if (userSocketId) {
         console.log(`User ${receiver_id} is online with socket ID: ${userSocketId}`);
         io.to(userSocketId).emit('newMessage', { sender_id, content, timestamp });
@@ -83,7 +83,17 @@ function handleMessage(data) {
             timestamp
         });
     } else {
-        console.log(`User ${receiver_id} is not online. Notification skipped.`);
+        console.log(`User ${receiver_id} is not online. Storing pending notification.`);
+
+        // Store the pending notification
+        if (!pendingNotifications.has(receiver_id)) {
+            pendingNotifications.set(receiver_id, []);
+        }
+        pendingNotifications.get(receiver_id).push({
+            sender_id,
+            message: `New message from ${sender_id}`,
+            timestamp
+        });
     }
 
     console.log("Current online users array:", JSON.stringify(onlineUsers, null, 2));
@@ -184,26 +194,28 @@ let onlineUsers = new Map();
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Fallback mechanism to detect idle connections
-    // const idleTimeout = setTimeout(() => {
-    //     if (![...onlineUsers.values()].includes(socket.id)) {
-    //         console.log(`Socket ${socket.id} disconnected due to idle timeout.`);
-    //         socket.disconnect();
-    //     }
-    // }, 600000); // 10 seconds timeout for user registration
-
-    // Listen for a custom event to register user on connection
     socket.on('userConnected', (userId) => {
         if (userId) {
             onlineUsers.set(userId, socket.id);
             console.log(`User ${userId} is now online with socket ID: ${socket.id}`);
+
+            // Check if there are any pending notifications for the user
+            if (pendingNotifications.has(userId)) {
+                const notifications = pendingNotifications.get(userId);
+                notifications.forEach(notification => {
+                    io.to(socket.id).emit('notify', notification);
+                    console.log(`Pending notification sent to User ${userId}`);
+                });
+
+                // Clear the pending notifications for this user
+                pendingNotifications.delete(userId);
+            }
+
             console.log('Current online users:', [...onlineUsers.entries()]);
         }
     });
 
     
-    
-
     // Join room logic
     // socket.on('joinRoom', ({ userId, roomId }) => {
     //     console.log(`User ${userId} joined room ${roomId}`);
@@ -214,34 +226,29 @@ io.on('connection', (socket) => {
     socket.on('sendMessage', (data) => {
         console.log('Message received:', data);
 
-        // Emit the message to the room
-        io.to(data.roomId).emit('newMessage', data);
-        socket.emit('messageSent', { success: true, message: 'Message sent!' });
+        const { sender_id, receiver_id, content, timestamp } = data;
 
-        socket.on('sendMessage', (messageData) => {
-            const { sender_id, receiver_id } = messageData;
-    
-            // Check if receiver is online
-            if (onlineUsers.has(receiver_id)) {
-                const receiverSocketId = onlineUsers.get(receiver_id);
-                io.to(receiverSocketId).emit('newMessage', messageData); // Send message
-                console.log(`Message sent to user ${receiver_id}`);
-            } else {
-                console.log(`User ${receiver_id} is not online. Notification skipped.`);
-            }
-        });
-
-        // Notify the receiver if online
-        const receiverSocketId = onlineUsers.get(data.receiverId);
+        // Check if receiver is online
+        const receiverSocketId = onlineUsers.get(receiver_id);
         if (receiverSocketId) {
+            io.to(receiverSocketId).emit('newMessage', data);  // Send message
+            console.log(`Message sent to user ${receiver_id}`);
             io.to(receiverSocketId).emit('notify', {
-                senderId: data.senderId,
-                message: `New message from ${data.senderId}`,
-                roomId: data.roomId,
+                senderId: sender_id,
+                message: `New message from ${sender_id}`,
+                timestamp
             });
-            console.log(`Notification sent to user ${data.receiverId} (socket ID: ${receiverSocketId})`);
+            console.log(`Notification sent to user ${receiver_id}`);
         } else {
-            console.log(`User ${data.receiverId} is not online. Notification skipped.`);
+            console.log(`User ${receiver_id} is not online. Storing pending notification.`);
+            if (!pendingNotifications.has(receiver_id)) {
+                pendingNotifications.set(receiver_id, []);
+            }
+            pendingNotifications.get(receiver_id).push({
+                sender_id,
+                message: `New message from ${sender_id}`,
+                timestamp
+            });
         }
     });
 
