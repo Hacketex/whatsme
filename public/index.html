@@ -38,10 +38,10 @@
 
     <script>
         // const socket = io();
-        const socket = io({
-            reconnectionAttempts: Infinity,
-            timeout: 10000,
-        });
+        // const socket = io({
+        //     reconnectionAttempts: Infinity,
+        //     timeout: 10000,
+        // });
         const messagesContainer = document.getElementById('messages-container');
         const messageInput = document.getElementById('message-input');
         const sendMessageForm = document.getElementById('send-message-form');
@@ -51,9 +51,13 @@
     
         document.getElementById('username-display').textContent = username;
 
-        // Now you can use `socket` to handle events
+        const socket = io(); // Adjust the URL for production if needed
         socket.on('connect', () => {
-            console.log('Connected to server');
+            console.log('Connected to server:', socket.id);
+            const userId = localStorage.getItem('userId'); // Ensure this is stored on login
+            if (userId) {
+                socket.emit('userConnected', userId);
+            }
         });
 
         socket.on('connect_error', (error) => {

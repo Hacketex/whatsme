@@ -44,16 +44,56 @@ webPush.setVapidDetails('mailto:pratikdhole786@gmail.com', publicVapidKey, priva
 
 app.post('/subscribe', (req, res) => {
     const { subscription, userId } = req.body;
+    if (!subscription || !userId) {
+        return res.status(400).json({ error: 'Subscription and userId are required.' });
+    }
 
     db.query(
         'UPDATE users SET subscription = ? WHERE id = ?', 
         [JSON.stringify(subscription), userId], 
         (err) => {
-            if (err) throw err;
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Failed to save subscription.' });
+            }
             res.status(201).json({ message: 'Subscription saved.' });
         }
     );
 });
+
+
+function handleMessage(data) {
+    const { sender_id, receiver_id, content, content_type, timestamp } = data;
+
+    // Log message data for verification
+    console.log("Received message data:", data);
+
+    const userSocketId = onlineUsers.get(String(receiver_id));
+    if (userSocketId) {
+        console.log(`User ${receiver_id} is online with socket ID: ${userSocketId}`);
+        // Send real-time message to the receiver
+        io.to(userSocketId).emit('newMessage', { sender_id, content, timestamp });
+        console.log(`Message delivered to User ${receiver_id}.`);
+    } else {
+        console.log(`User ${receiver_id} is not online. Notification skipped.`);
+        // Handle push notifications for offline users here
+    }
+    
+
+    // Log the current state of online users
+    console.log("Current online users array:", JSON.stringify(onlineUsers, null, 2));
+}
+
+function sendNotification(userId, payload) {
+    const subscription = onlineUsers.get(userId);
+    if (subscription) {
+        webPush.sendNotification(subscription, JSON.stringify(payload))
+            .then(() => console.log(`Notification sent to User ${userId}`))
+            .catch(err => console.error('Push Notification Error:', err));
+    } else {
+        console.log(`User ${userId} is not subscribed.`);
+    }
+}
 
 // Route to get username by user ID
 app.get('/get-username', (req, res) => {
@@ -135,65 +175,75 @@ app.post('/login', (req, res) => {
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
-        // Listen for a custom event to register user on connection
-        socket.on('userConnected', (userId) => {
+
+    // Fallback mechanism to detect idle connections
+    const idleTimeout = setTimeout(() => {
+        if (![...onlineUsers.values()].includes(socket.id)) {
+            console.log(`Socket ${socket.id} disconnected due to idle timeout.`);
+            socket.disconnect();
+        }
+    }, 10000); // 10 seconds timeout for user registration
+
+    // Listen for a custom event to register user on connection
+    socket.on('userConnected', (userId) => {
+        clearTimeout(idleTimeout); // Cancel timeout when a valid user connects
+        if (userId) {
             onlineUsers.set(userId, socket.id);
             console.log(`User ${userId} is now online with socket ID: ${socket.id}`);
-        });
+            console.log('Current online users:', [...onlineUsers.entries()]);
+        }
+    });
+    
     
 
-    // Existing logic (preserving whatever you had here)
+    // Join room logic
     socket.on('joinRoom', ({ userId, roomId }) => {
         console.log(`User ${userId} joined room ${roomId}`);
         socket.join(roomId);
-
-        // Notify other users in the room
         socket.to(roomId).emit('userJoined', { userId, roomId });
     });
 
     socket.on('sendMessage', (data) => {
         console.log('Message received:', data);
 
-        // Emit message to the specific room
+        // Emit the message to the room
         io.to(data.roomId).emit('newMessage', data);
-
-        // Notify sender confirmation
         socket.emit('messageSent', { success: true, message: 'Message sent!' });
-    });
 
-    // Added feature: Notify active users about new messages
-    socket.on('notify', ({ receiverId, notification }) => {
-        console.log(`Notifying user ${receiverId}:`, notification);
-
-        // Notify specific user if they are connected
-        const room = io.sockets.adapter.rooms.get(receiverId);
-        if (room && room.size > 0) {
-            io.to(receiverId).emit('notify', notification);
+        // Notify the receiver if online
+        const receiverSocketId = onlineUsers.get(data.receiverId);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('notify', {
+                senderId: data.senderId,
+                message: `New message from ${data.senderId}`,
+                roomId: data.roomId,
+            });
+            console.log(`Notification sent to user ${data.receiverId} (socket ID: ${receiverSocketId})`);
         } else {
-            console.log(`User ${receiverId} is not connected. Notification skipped.`);
+            console.log(`User ${data.receiverId} is not online. Notification skipped.`);
         }
     });
 
-    // Existing disconnect logic
     socket.on('disconnect', () => {
         const userId = [...onlineUsers.entries()].find(([key, value]) => value === socket.id)?.[0];
         if (userId) {
             onlineUsers.delete(userId);
-            console.log(`User ${userId} disconnected and removed from onlineUsers.`);
+            console.log(`User ${userId} disconnected.`);
+        } else {
+            console.log(`Unknown user disconnected. Socket ID: ${socket.id}`);
         }
-    });    
+        console.log('Current online users:', [...onlineUsers.entries()]);
+    });
 });
-
 
 app.get('/messages/:userId/:receiverId', (req, res) => {
     const { userId, receiverId } = req.params;
-
     db.query(
         'SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY timestamp',
-        [userId, receiverId, receiverId, userId], 
+        [userId, receiverId, receiverId, userId],
         (err, results) => {
             if (err) throw err;
-
+            
             res.json(results);
         }
     );
@@ -205,20 +255,17 @@ server.listen(3000, () => {
 
 app.post('/send-message', (req, res) => {
     const { sender_id, receiver_id, content, content_type, timestamp } = req.body;
-
-    console.log('Received message data:', req.body);
-
     const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+    console.log('Received message data:', req.body);
 
     db.query(
         'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
         [sender_id, receiver_id, content, content_type, formattedTimestamp],
         (err, results) => {
             if (err) {
-                console.error('Error inserting message into the database:', err);
+                console.error('Database error:', err);
                 return res.status(500).json({ success: false, error: 'Database error' });
             }
-
             console.log('Message inserted with ID:', results.insertId);
 
             io.emit('message', {
@@ -226,18 +273,19 @@ app.post('/send-message', (req, res) => {
                 receiver_id,
                 content,
                 content_type,
-                timestamp: formattedTimestamp
+                timestamp: formattedTimestamp,
             });
 
             const receiverSocketId = onlineUsers.get(receiver_id);
-
             if (receiverSocketId) {
-                io.to(receiverSocketId).emit('notify', notification);
+                io.to(receiverSocketId).emit('notify', {
+                    senderId: sender_id,
+                    message: `New message from ${sender_id}`,
+                });
                 console.log(`Notification sent to user ${receiver_id} (socket ID: ${receiverSocketId})`);
             } else {
                 console.log(`User ${receiver_id} is not online. Notification skipped.`);
             }
-            
             res.json({ success: true });
         }
     );

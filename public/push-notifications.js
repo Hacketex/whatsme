@@ -99,7 +99,7 @@
 
 //new code without subsciption
 
-const socket = io();
+// const socket = io();
 
 // Register the logged-in user with the server
 const userId = localStorage.getItem('userId'); // Assuming userId is stored in localStorage after login
