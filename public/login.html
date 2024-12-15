@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
+    <!-- Add Socket.io client library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
     <h2>Login</h2>
@@ -16,6 +18,9 @@
     <script src="/public/service-worker.js"></script>
 
     <script>
+        // Initialize Socket.io connection
+        const socket = io();
+
         // Simulate login and fetch messages
         function login() {
             const username = document.getElementById('username').value;
@@ -36,7 +41,8 @@
                 if (data.userId) {
                     localStorage.setItem('userId', data.userId);
                     localStorage.setItem('username', data.username);
-                    window.location.href = '/index.html';  // Redirect to the chat page after successful login
+                    socket.emit('userConnected', data.userId);  // Emit the userConnected event after login
+                    window.location.href = '/index.html';
                 } else {
                     document.getElementById('error').textContent = 'Login failed';
                 }
