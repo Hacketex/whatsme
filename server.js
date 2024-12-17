@@ -3,7 +3,6 @@ const moment = require('moment');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-// const onlineUsers = new Map(); // Tracks userId -> socket.id mappings
 let pendingNotifications = new Map(); 
 
 const mysql = require('mysql2');
@@ -12,7 +11,17 @@ const webPush = require('web-push');  // Add web-push for notifications
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+// const io = new Server(server);
+const cors = require('cors');
+app.use(cors());
+
+const io = require('socket.io')(server, {
+    cors: {
+        origin: "http://localhost:3000",
+        methods: ["GET", "POST"]
+    }
+});
+
 
 app.use(bodyParser.json());
 const path = require('path');
@@ -39,31 +48,6 @@ db.connect((err) => {
     console.log('Connected to MySQL database.');
 });
 
-const publicVapidKey = 'BGgKCQ9Od_ZuexQND6TSsZqa9O52uo82aAh08-YXXbbtC_jzUlKgKcRBMqmBez_xg43tAIo1fL1mI4yRAgXmKrs';
-const privateVapidKey = 'Xn8Z85i4UXAFiDltS1TUY4iqHJFZmtxcNfR-gt1ORFA';
-
-webPush.setVapidDetails('mailto:pratikdhole786@gmail.com', publicVapidKey, privateVapidKey);
-
-// app.post('/subscribe', (req, res) => {
-//     const { subscription, userId } = req.body;
-//     if (!subscription || !userId) {
-//         return res.status(400).json({ error: 'Subscription and userId are required.' });
-//     }
-
-//     db.query(
-//         'UPDATE users SET subscription = ? WHERE id = ?', 
-//         [JSON.stringify(subscription), userId], 
-//         (err) => {
-//             if (err) {
-//                 console.error('Database error:', err);
-//                 return res.status(500).json({ error: 'Failed to save subscription.' });
-//             }
-//             res.status(201).json({ message: 'Subscription saved.' });
-//         }
-//     );
-// });
-
-
 function handleMessage(data) {
     const { sender_id, receiver_id, content, content_type, timestamp } = data;
 
@@ -76,7 +60,6 @@ function handleMessage(data) {
         io.to(userSocketId).emit('newMessage', { sender_id, content, timestamp });
         console.log(`Message delivered to User ${receiver_id}.`);
 
-        // Send notification only if the user is online
         io.to(userSocketId).emit('notify', {
             senderId: sender_id,
             message: `New message from ${sender_id}`,
@@ -85,7 +68,6 @@ function handleMessage(data) {
     } else {
         console.log(`User ${receiver_id} is not online. Storing pending notification.`);
 
-        // Store the pending notification
         if (!pendingNotifications.has(receiver_id)) {
             pendingNotifications.set(receiver_id, []);
         }
@@ -104,7 +86,6 @@ function sendNotification(userId, payload) {
     const socketId = onlineUsers.get(userId);  // Get socketId from onlineUsers map
     console.log(`Checking if user ${userId} is online: ${socketId ? 'Yes' : 'No'}`);
     if (socketId) {
-        // The user is online, send notification
         io.to(socketId).emit('pushNotification', payload);
         console.log(`Notification sent to User ${userId}`);
     } else {
@@ -112,7 +93,6 @@ function sendNotification(userId, payload) {
     }
 }
 
-// Route to get username by user ID
 app.get('/get-username', (req, res) => {
     const userId = req.query.id;
 
@@ -137,23 +117,41 @@ app.get('/get-username', (req, res) => {
 
 
 app.post('/send-notification', (req, res) => {
-    const payload = JSON.stringify({
-        title: 'New Message!',
-        body: 'You have a new message!',
-        url: 'http://localhost:3000/index.html'
+    const { title, body, receiverId } = req.body;
+
+    db.query('SELECT subscription FROM users WHERE id = ?', [receiverId], (err, results) => {
+        if (err || results.length === 0) {
+            console.error('Error fetching FCM token:', err);
+            return res.status(500).send('Failed to send notification');
+        }
+
+        const token = results[0].subscription;
+        const payload = {
+            notification: {
+                title,
+                body,
+                icon: '/icon.png'
+            }
+        };
+
+        webPush.sendNotification({ endpoint: token }, JSON.stringify(payload))
+            .then(() => res.status(200).send('Notification sent successfully'))
+            .catch(err => {
+                console.error('Error sending notification:', err);
+                res.status(500).send('Notification failed');
+            });
     });
-
-    db.query('SELECT * FROM users WHERE subscription IS NOT NULL', (err, users) => {
-        if (err) return console.error(err);
-
-        users.forEach(user => {
-            const subscription = JSON.parse(user.subscription);
-            webPush.sendNotification(subscription, payload).catch(error => console.error(error));
-        });
-    });
-
-    res.sendStatus(200);
 });
+
+// if ('serviceWorker' in navigator) {
+//     navigator.serviceWorker.register('/firebase-messaging-sw.js')
+//         .then((registration) => {
+//             console.log('Service Worker registered with scope:', registration.scope);
+//         })
+//         .catch((error) => {
+//             console.error('Service Worker registration failed:', error);
+//         });
+// }
 
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
@@ -199,15 +197,12 @@ io.on('connection', (socket) => {
             onlineUsers.set(userId, socket.id);
             console.log(`User ${userId} is now online with socket ID: ${socket.id}`);
 
-            // Check if there are any pending notifications for the user
             if (pendingNotifications.has(userId)) {
                 const notifications = pendingNotifications.get(userId);
                 notifications.forEach(notification => {
                     io.to(socket.id).emit('notify', notification);
                     console.log(`Pending notification sent to User ${userId}`);
                 });
-
-                // Clear the pending notifications for this user
                 pendingNotifications.delete(userId);
             }
 
@@ -215,13 +210,25 @@ io.on('connection', (socket) => {
         }
     });
 
-    
     // Join room logic
     // socket.on('joinRoom', ({ userId, roomId }) => {
     //     console.log(`User ${userId} joined room ${roomId}`);
     //     socket.join(roomId);
     //     socket.to(roomId).emit('userJoined', { userId, roomId });
     // });
+
+    app.post('/save-fcm-token', (req, res) => {
+        const { token, userId } = req.body;
+        if (!token || !userId) return res.status(400).send('Token and User ID are required');
+    
+        db.query('UPDATE users SET subscription = ? WHERE id = ?', [token, userId], (err, result) => {
+            if (err) {
+                console.error('Error saving FCM token:', err);
+                return res.status(500).send('Database error');
+            }
+            res.status(200).send('Token saved successfully');
+        });
+    });    
 
     socket.on('sendMessage', (data) => {
         console.log('Message received:', data);
@@ -253,7 +260,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        // Find user by socket ID and remove them from online users map
         for (let [userId, socketId] of onlineUsers.entries()) {
             if (socketId === socket.id) {
                 onlineUsers.delete(userId);

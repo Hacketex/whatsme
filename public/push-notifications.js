@@ -102,33 +102,60 @@
 // const socket = io();
 
 // Register the logged-in user with the server
-const userId = localStorage.getItem('userId'); // Assuming userId is stored in localStorage after login
-if (userId) {
-    socket.emit('register', userId);
-}
+// const userId = localStorage.getItem('userId'); // Assuming userId is stored in localStorage after login
+// if (userId) {
+//     socket.emit('register', userId);
+// }
 
-// Listen for notifications
-socket.on('notification', (data) => {
-    console.log('Notification received:', data);
+// // Listen for notifications
+// socket.on('notification', (data) => {
+//     console.log('Notification received:', data);
 
-    // Show a browser notification
-    if (Notification.permission === 'granted') {
-        new Notification(data.title, {
-            body: data.body,
-            timestamp: data.timestamp,
-        });
-    } else {
-        console.log('Notifications are not permitted.');
-    }
-});
+//     // Show a browser notification
+//     if (Notification.permission === 'granted') {
+//         new Notification(data.title, {
+//             body: data.body,
+//             timestamp: data.timestamp,
+//         });
+//     } else {
+//         console.log('Notifications are not permitted.');
+//     }
+// });
 
-// Request notification permission
-if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-    Notification.requestPermission().then((permission) => {
-        if (permission === 'granted') {
+// // Request notification permission
+// if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+//     Notification.requestPermission().then((permission) => {
+//         if (permission === 'granted') {
+//             console.log('Notification permission granted.');
+//         } else {
+//             console.log('Notification permission denied.');
+//         }
+//     });
+// }
+
+//new firebase setup push noitification.js
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
+
+const messaging = getMessaging();
+const vapidKey = "BNPE2GLeiy4s95wOF3fHsiRDz0HjWd_wRf20U3yj7WsqrKKHkz0s-KGV3DUcq_kAqoilf_nRNJzldAANJTsVBBI";
+
+export const requestPermission = async () => {
+    try {
+        const status = await Notification.requestPermission();
+        if (status === 'granted') {
             console.log('Notification permission granted.');
+            const token = await getToken(messaging, { vapidKey });
+            console.log('FCM Token:', token);
+            return token; // Send this token to the backend
         } else {
-            console.log('Notification permission denied.');
+            console.error('Notification permission not granted.');
         }
-    });
-}
+    } catch (error) {
+        console.error('Error requesting notification permission:', error);
+    }
+};
+
+onMessage(messaging, (payload) => {
+    console.log('Message received in foreground:', payload);
+    // Handle the notification display logic
+});

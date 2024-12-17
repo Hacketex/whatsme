@@ -52,6 +52,22 @@
             });
         }
     </script>
-        
+    <script type="module">
+        import { requestPermission } from './push-notifications.js';
+    
+        document.getElementById('enableNotifications').addEventListener('click', async () => {
+            const token = await requestPermission();
+            if (token) {
+                // Send token to backend for storing in DB
+                await fetch('/save-fcm-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token })
+                });
+            }
+        });
+    </script>    
 </body>
 </html>
