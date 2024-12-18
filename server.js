@@ -9,6 +9,7 @@ const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const webPush = require('web-push');  // Add web-push for notifications
 
+
 const app = express();
 const server = http.createServer(app);
 // const io = new Server(server);
@@ -134,12 +135,15 @@ app.post('/send-notification', (req, res) => {
             }
         };
 
-        webPush.sendNotification({ endpoint: token }, JSON.stringify(payload))
-            .then(() => res.status(200).send('Notification sent successfully'))
-            .catch(err => {
-                console.error('Error sending notification:', err);
-                res.status(500).send('Notification failed');
-            });
+        const admin = require("firebase-admin");
+        admin.messaging().send({
+            token,
+            notification: {
+                title,
+                body,
+            },
+        });
+        
     });
 });
 

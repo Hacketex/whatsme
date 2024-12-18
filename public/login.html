@@ -39,35 +39,18 @@
             })
             .then(data => {
                 if (data.userId) {
-                    localStorage.setItem('userId', data.userId);
-                    localStorage.setItem('username', data.username);
-                    socket.emit('setUser', userId);
-                    window.location.href = '/index.html';
-                } else {
-                    document.getElementById('error').textContent = 'Login failed';
-                }
+                localStorage.setItem('userId', data.userId);
+                localStorage.setItem('username', data.username);
+                socket.emit('setUser', data.userId); // Correctly passing userId from the response
+                window.location.href = '/index.html';
+            } else {
+                document.getElementById('error').textContent = 'Login failed';
+            }
             })
             .catch(error => {
                 document.getElementById('error').textContent = 'Login failed: ' + error.message;
             });
         }
     </script>
-    <script type="module">
-        import { requestPermission } from './push-notifications.js';
-    
-        document.getElementById('enableNotifications').addEventListener('click', async () => {
-            const token = await requestPermission();
-            if (token) {
-                // Send token to backend for storing in DB
-                await fetch('/save-fcm-token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ token })
-                });
-            }
-        });
-    </script>    
 </body>
 </html>

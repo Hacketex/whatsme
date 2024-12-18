@@ -2,7 +2,7 @@
   "name": "whatsMe",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -13,6 +13,7 @@
     "bcrypt": "^5.1.1",
     "express": "^4.21.1",
     "firebase": "^11.1.0",
+    "https": "^1.0.0",
     "moment": "^2.30.1",
     "mysql2": "^3.11.3",
     "socket.io": "^4.8.0",

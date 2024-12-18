@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-Time Chat</title>
     <script src="/socket.io/socket.io.js"></script>
-    <script defer src="push-notifications.js"></script> <!-- Your push notifications -->
+    <script defer type="module" src="push-notifications.js"></script>
     <script defer src="service-worker.js"></script>
     <link rel="stylesheet" href="style.css"> <!-- Link to external CSS -->
 </head>
@@ -277,7 +277,46 @@
             window.location.href = '/login.html';
         }
     </script>
-
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging.js";
+    
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAz2NDwjpuge1imPoIRLdHjYKXpIUqPY8o",
+            authDomain: "fbchatapp-7f397.firebaseapp.com",
+            projectId: "fbchatapp-7f397",
+            storageBucket: "fbchatapp-7f397.firebasestorage.app",
+            messagingSenderId: "1043056589173",
+            appId: "1:1043056589173:web:4329be1bffdfa8df637b3c",
+            measurementId: "G-2LZXSL163S"
+        };
+    
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+    
+        // Initialize Firebase Messaging
+        const messaging = getMessaging(app);
+    
+        // Request permission for push notifications
+        async function requestNotificationPermission() {
+          try {
+            const token = await getToken(messaging, {
+              vapidKey: "BNPE2GLeiy4s95wOF3fHsiRDz0HjWd_wRf20U3yj7WsqrKKHkz0s",
+            });
+            console.log("FCM Token:", token);
+          } catch (err) {
+            console.error("Error getting FCM token:", err);
+          }
+        }
+    
+        requestNotificationPermission();
+    
+        // Handle incoming messages
+        onMessage(messaging, (payload) => {
+          console.log("Message received. ", payload);
+        });
+    </script>
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/firebase-messaging-sw.js')
@@ -288,23 +327,18 @@
                     console.error('Service Worker registration failed:', error);
                 });
         }
-    </script>
-    <script type="module" src="/push-notifications.js">
-        document.getElementById('enableNotifications').addEventListener('click', async () => {
+
+        document.getElementById('enable-notifications').addEventListener('click', async () => {
             const token = await requestPermission();
             if (token) {
-                // Send token to backend for storing in DB
                 await fetch('/save-fcm-token', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ token })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token }),
                 });
             }
         });
-    </script>    
-    
+    </script>
 </body>
 
 </html>
