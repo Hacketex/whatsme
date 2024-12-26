@@ -277,16 +277,24 @@ io.on('connection', (socket) => {
 
 app.get('/messages/:userId/:receiverId', (req, res) => {
     const { userId, receiverId } = req.params;
+    const limit = parseInt(req.query.limit, 10) || 50; // Default 50 messages
+    const offset = parseInt(req.query.offset, 10) || 0; // Default start at 0
+
     db.query(
-        'SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY timestamp',
-        [userId, receiverId, receiverId, userId],
+        `SELECT * FROM messages 
+         WHERE (sender_id = ? AND receiver_id = ?) 
+            OR (sender_id = ? AND receiver_id = ?) 
+         ORDER BY timestamp DESC 
+         LIMIT ? OFFSET ?`,
+        [userId, receiverId, receiverId, userId, limit, offset],
         (err, results) => {
             if (err) throw err;
-            
-            res.json(results);
+
+            res.json(results.reverse()); // Reverse to return messages in ascending order
         }
     );
 });
+
 
 server.listen(3000, () => {
     console.log('Server is running on http://localhost:3000/login');

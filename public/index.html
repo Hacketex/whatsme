@@ -23,6 +23,7 @@
             </div>
             <button id="enable-notifications" class="notification-button">Enable Notifications</button>
         </div>
+        <button id="load-more" onclick="loadMoreMessages()">Load More</button>
 
         <div id="messages-container" class="chat-messages"></div>
         <p id="typing-indicator" style="display: none;">Someone is typing...</p>
@@ -37,11 +38,6 @@
     </div>
 
     <script>
-        // const socket = io();
-        // const socket = io({
-        //     reconnectionAttempts: Infinity,
-        //     timeout: 10000,
-        // });
         const messagesContainer = document.getElementById('messages-container');
         const messageInput = document.getElementById('message-input');
         const sendMessageForm = document.getElementById('send-message-form');
@@ -50,7 +46,7 @@
         const loggedInUserId = localStorage.getItem('userId');
     
         document.getElementById('username-display').textContent = username;
-
+    
         const socket = io(); // Adjust the URL for production if needed
         socket.on('connect', () => {
             console.log('Connected to server:', socket.id);
@@ -59,19 +55,18 @@
                 socket.emit('userConnected', userId);
             }
         });
-
+    
         socket.on('connect_error', (error) => {
             console.log('Connection failed:', error);
         });
-
-                // Service Worker Registration Logic
-                if ('serviceWorker' in navigator) {
+    
+        // Service Worker Registration Logic
+        if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 try {
                     const registration = await navigator.serviceWorker.register('service-worker.js');
                     console.log('Service Worker registered with scope:', registration.scope);
-
-                    // Check if notifications are supported
+    
                     if (Notification.permission === 'default') {
                         document.getElementById('enable-notifications').style.display = 'block';
                     }
@@ -82,8 +77,7 @@
         } else {
             console.warn('Service Worker is not supported in this browser.');
         }
-
-        // Notification Request Button
+    
         document.getElementById('enable-notifications').addEventListener('click', async () => {
             const permission = await Notification.requestPermission();
             if (permission === 'granted') {
@@ -93,85 +87,113 @@
             }
         });
     
-        // Fetch and display old messages when the page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            const loggedInUserId = localStorage.getItem('userId') || 'Anonymous'; // The logged-in user's ID
-            let chatPartnerId;
-            let chatPartnerName;
+        let messages = [];
+        let displayedMessages = [];
+        let offset = 0;
+        const limit = 40; // Fetch 30 messages per request
+        const batchSize = 20; // Display 15 messages initially
+        let usernameCache = {};
     
-            // Set chat partner ID and name dynamically based on the logged-in user
-            if (loggedInUserId == 9) {
-                chatPartnerId = 10;  // Jaanvi's ID if Pratik is logged in
-                chatPartnerName = 'Jaanvi';
-            } else if (loggedInUserId == 10) {
-                chatPartnerId = 9;  // Pratik's ID if Jaanvi is logged in
-                chatPartnerName = 'Pratik';
-            }
+        function fetchMessages() {
+            const chatPartnerId = (loggedInUserId == 9) ? 10 : 9; // Define dynamically
     
-            fetch(`/messages/${loggedInUserId}/${chatPartnerId}`)
+            fetch(`/messages/${loggedInUserId}/${chatPartnerId}?offset=${offset}&limit=${limit}`)
                 .then(res => res.json())
-                .then(messages => {
-                    messagesContainer.innerHTML = ''; // Clear the container before adding messages
-
-                    messages.forEach(msg => {
-                        const messageElement = document.createElement('div');
-                        messageElement.classList.add('message');
-
-                        let sender = (msg.sender_id == loggedInUserId) ? 'You' : (chatPartnerName || 'Unknown');
-
-                        let messageContent = '';
-                        if (msg.content_type === 'text') {
-                            messageContent = `<strong>${sender}</strong>: ${msg.content}`;
-                        } else if (msg.content_type === 'image') {
-                            messageContent = `<strong>${sender}</strong>: <br><img src="${msg.file_path}" alt="Image" style="max-width: 300px;">`;
-                        } else if (msg.content_type === 'file') {
-                            messageContent = `<strong>${sender}</strong>: <br><a href="${msg.file_path}" target="_blank">Download file</a>`;
-                        }
-
-                        messageElement.innerHTML = `${messageContent}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
-                        messagesContainer.appendChild(messageElement);
-                    });
-
-                    // Auto-scroll to the bottom after loading messages
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                .then(data => {
+                    messages = [...data, ...messages];
+                    offset += limit;
+                    displayMessages();
                 })
                 .catch(error => {
                     console.error('Error fetching messages:', error);
                 });
+        }
+    
+        function displayMessages() {
+            const newMessages = messages.slice(-batchSize);
+            displayedMessages = [...newMessages, ...displayedMessages];
+            renderMessages(displayedMessages);
+        }
+    
+        function loadMoreMessages() {
+            if (messages.length <= displayedMessages.length) {
+                fetchMessages();
+            } else {
+                displayMessages();
+            }
+        }
+    
+        async function renderMessages(messages) {
+            messagesContainer.innerHTML = ''; // Clear previous messages
+            for (const msg of messages) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+
+                // Fetch username from cache, or fetch if not already cached
+                let sender = (msg.sender_id === loggedInUserId) ? 'You' : await getUsername(msg.sender_id);
+                let receiver = (msg.receiver_id === loggedInUserId) ? 'You' : await getUsername(msg.receiver_id);
+
+                let messageContent = '';
+                if (msg.content_type === 'text') {
+                    messageContent = `<strong>${sender}</strong>: ${msg.content}`;
+                } else if (msg.content_type === 'image') {
+                    messageContent = `<strong>${sender}</strong>: <br><img src="${msg.file_path}" alt="Image" style="max-width: 300px;">`;
+                } else if (msg.content_type === 'file') {
+                    messageContent = `<strong>${sender}</strong>: <br><a href="${msg.file_path}" target="_blank">Download file</a>`;
+                }
+
+                messageElement.innerHTML = `${messageContent}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
+                messagesContainer.appendChild(messageElement);
+            }
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+                // Function to get username with caching
+        async function getUsername(userId) {
+            if (usernameCache[userId]) {
+                return usernameCache[userId];
+            } else {
+                const username = await getUserNameById(userId);
+                usernameCache[userId] = username;
+                return username;
+            }
+        }
+    
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchMessages();
+    
+            document.getElementById('load-more-button').addEventListener('click', loadMoreMessages);
         });
     
-        // Send a message via the form submission
         sendMessageForm.addEventListener('submit', (e) => {
-            e.preventDefault(); // Prevent page reload on form submit
-
-            const messageText = messageInput.value.trim(); // Get the message text from the input field
-            if (messageText === '') return; // Don't send empty messages
-
+            e.preventDefault();
+    
+            const messageText = messageInput.value.trim();
+            if (messageText === '') return;
+    
             const newMessage = {
                 sender_id: loggedInUserId,
-                receiver_id: (loggedInUserId == 9) ? 10 : 9, // Define chat partner dynamically
+                receiver_id: (loggedInUserId == 9) ? 10 : 9,
                 content: messageText,
                 content_type: 'text',
-                timestamp: new Date().toISOString() // Get the current time in ISO format
+                timestamp: new Date().toISOString()
             };
-
-            // Send the message to the server via POST request
+    
             fetch(`/send-message`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(newMessage) // Send the message object as JSON
+                body: JSON.stringify(newMessage)
             })
                 .then(res => {
                     if (!res.ok) {
-                        return res.text().then(text => { throw new Error(text); }); // Log the raw text response
+                        return res.text().then(text => { throw new Error(text); });
                     }
                     return res.json();
                 })
                 .then(data => {
                     if (data.success) {
-                        // Clear the input field after sending
                         messageInput.value = '';
                     } else {
                         console.error('Error sending message:', data.error);
@@ -181,15 +203,15 @@
                     console.error('Error sending message:', error);
                 });
         });
-
+    
         async function getUserNameById(userId) {
             try {
                 const response = await fetch(`/get-username?id=${userId}`);
-                
+    
                 if (!response.ok) {
                     throw new Error(`Error fetching username: ${response.statusText}`);
                 }
-                
+    
                 const data = await response.json();
                 return data.username;
             } catch (error) {
@@ -198,22 +220,20 @@
         }
     
         socket.on('message', async (msg) => {
-            // Avoid duplicate "You" messages
             const isSender = msg.sender_id === loggedInUserId;
             const sender = isSender ? 'You' : await getUserNameById(msg.sender_id);
-
+    
             const messageContent = `<strong>${sender}</strong>: ${msg.content}`;
             const timestamp = new Date(msg.timestamp).toLocaleString();
-
+    
             const messageElement = document.createElement('div');
             messageElement.classList.add('message');
             messageElement.innerHTML = `${messageContent}<br><span class="timestamp">${timestamp}</span>`;
-
+    
             messagesContainer.appendChild(messageElement);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Auto-scroll to the bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         });
-
-        // Typing indicator
+    
         messageInput.addEventListener('input', () => {
             socket.emit('typing', username);
         });
@@ -225,58 +245,14 @@
                 typingIndicator.style.display = 'none';
             }, 2000);
         });
-
-        socket.on('newMessage', message => {
-            db.query('SELECT subscription FROM users WHERE id = ?', [message.receiverId], (err, results) => {
-                if (err) {
-                    console.error('Error fetching subscription:', err);
-                    return;
-                }
-
-                if (results.length > 0) {
-                    const rawSubscription = results[0].subscription;
-
-                    try {
-                        const subscription = JSON.parse(rawSubscription);
-
-                        const payload = JSON.stringify({
-                            title: 'New Message!',
-                            body: `${message.senderUsername}: ${message.content}`,
-                            url: `http://localhost:3000/chat/${message.chatId}`
-                        });
-
-                        webPush.sendNotification(subscription, payload)
-                            .then(() => console.log('Notification sent successfully'))
-                            .catch(err => {
-                                if (err.statusCode === 410) {
-                                    console.error('Subscription has expired. Removing from database.');
-
-                                    db.query('UPDATE users SET subscription = NULL WHERE id = ?', [message.receiverId], (err) => {
-                                        if (err) {
-                                            console.error('Failed to remove expired subscription:', err);
-                                        } else {
-                                            console.log('Expired subscription removed successfully.');
-                                        }
-                                    });
-                                } else {
-                                    console.error('Error sending notification:', err);
-                                }
-                            });
-                    } catch (parseError) {
-                        console.error('Failed to parse subscription JSON:', parseError);
-                    }
-                }
-            });
-        });
-
     
-        // Logout function
         function logout() {
             localStorage.removeItem('username');
             localStorage.clear();
             window.location.href = '/login.html';
         }
     </script>
+    
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging.js";
