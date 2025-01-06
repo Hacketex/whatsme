@@ -88,50 +88,63 @@
         });
     
         let messages = [];
-        let displayedMessages = [];
         let offset = 0;
-        const limit = 40; // Fetch 30 messages per request
-        const batchSize = 20; // Display 15 messages initially
-        let usernameCache = {};
-    
+        const limit = 20; // Number of messages to fetch per request
+
         function fetchMessages() {
             const chatPartnerId = (loggedInUserId == 9) ? 10 : 9; // Define dynamically
-    
+
             fetch(`/messages/${loggedInUserId}/${chatPartnerId}?offset=${offset}&limit=${limit}`)
                 .then(res => res.json())
                 .then(data => {
-                    messages = [...data, ...messages];
-                    offset += limit;
-                    displayMessages();
+                    if (data.length > 0) {
+                        offset += data.length;
+                        appendMessages(data, true); // Append messages at the top
+                    } else {
+                        alert('No more messages to load.');
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching messages:', error);
                 });
         }
-    
-        function displayMessages() {
-            const newMessages = messages.slice(-batchSize);
-            displayedMessages = [...newMessages, ...displayedMessages];
-            renderMessages(displayedMessages);
-        }
-    
-        function loadMoreMessages() {
-            if (messages.length <= displayedMessages.length) {
-                fetchMessages();
-            } else {
-                displayMessages();
+
+        function appendMessages(newMessages, prepend = false) {
+            newMessages.forEach(msg => {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+
+                const sender = (msg.sender_id === loggedInUserId) ? 'You' : `User ${msg.sender_id}`;
+                messageElement.innerHTML = `<strong>${sender}:</strong> ${msg.content}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
+
+                if (prepend) {
+                    messagesContainer.prepend(messageElement);
+                } else {
+                    messagesContainer.appendChild(messageElement);
+                }
+            });
+
+            if (!prepend) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
             }
+        }
+
+        function loadMoreMessages() {
+            fetchMessages();
         }
     
         async function renderMessages(messages) {
-            messagesContainer.innerHTML = ''; // Clear previous messages
+            // Clear the container only for the first-time render to avoid overwriting
+            if (messagesContainer.childElementCount === 0) {
+                messagesContainer.innerHTML = ''; // Clear previous messages
+            }
+
             for (const msg of messages) {
                 const messageElement = document.createElement('div');
                 messageElement.classList.add('message');
 
-                // Fetch username from cache, or fetch if not already cached
+                // Fetch username from cache or server
                 let sender = (msg.sender_id === loggedInUserId) ? 'You' : await getUsername(msg.sender_id);
-                let receiver = (msg.receiver_id === loggedInUserId) ? 'You' : await getUsername(msg.receiver_id);
 
                 let messageContent = '';
                 if (msg.content_type === 'text') {
@@ -143,9 +156,10 @@
                 }
 
                 messageElement.innerHTML = `${messageContent}<br><span class="timestamp">${new Date(msg.timestamp).toLocaleString()}</span>`;
-                messagesContainer.appendChild(messageElement);
+
+                // Prepend older messages at the top
+                messagesContainer.prepend(messageElement);
             }
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
                 // Function to get username with caching

@@ -173,7 +173,7 @@ app.post('/login', (req, res) => {
 
         if (password === user.password) {
             db.query(
-                'SELECT content, timestamp FROM messages WHERE user_id = ? ORDER BY timestamp',
+                'SELECT content, timestamp FROM messages WHERE user_id = ? ORDER BY timestamp DESC',
                 [user.id], 
                 (err, messages) => {
                     if (err) throw err;
@@ -277,23 +277,27 @@ io.on('connection', (socket) => {
 
 app.get('/messages/:userId/:receiverId', (req, res) => {
     const { userId, receiverId } = req.params;
-    const limit = parseInt(req.query.limit, 10) || 50; // Default 50 messages
+    const limit = parseInt(req.query.limit, 10) || 30; // Default 40 messages
     const offset = parseInt(req.query.offset, 10) || 0; // Default start at 0
 
     db.query(
         `SELECT * FROM messages 
          WHERE (sender_id = ? AND receiver_id = ?) 
             OR (sender_id = ? AND receiver_id = ?) 
-         ORDER BY timestamp DESC 
+         ORDER BY timestamp DESC  -- Get messages in descending order
          LIMIT ? OFFSET ?`,
         [userId, receiverId, receiverId, userId, limit, offset],
         (err, results) => {
-            if (err) throw err;
-
-            res.json(results.reverse()); // Reverse to return messages in ascending order
+            if (err) {
+                console.error("Database query error:", err);
+                return res.status(500).json({ error: "Internal server error" });
+            }
+    
+            res.json(results);
         }
-    );
+    );    
 });
+
 
 
 server.listen(3000, () => {
