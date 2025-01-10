@@ -35,7 +35,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 const db = mysql.createConnection({
-    host: 'localhost',
+    host: '127.0.0.1',
     user: 'root',
     password: 'h4ck3r',
     database: 'chat_app'
@@ -236,32 +236,46 @@ io.on('connection', (socket) => {
 
     socket.on('sendMessage', (data) => {
         console.log('Message received:', data);
-
-        const { sender_id, receiver_id, content, timestamp } = data;
-
-        // Check if receiver is online
-        const receiverSocketId = onlineUsers.get(receiver_id);
-        if (receiverSocketId) {
-            io.to(receiverSocketId).emit('newMessage', data);  // Send message
-            console.log(`Message sent to user ${receiver_id}`);
-            io.to(receiverSocketId).emit('notify', {
-                senderId: sender_id,
-                message: `New message from ${sender_id}`,
-                timestamp
-            });
-            console.log(`Notification sent to user ${receiver_id}`);
-        } else {
-            console.log(`User ${receiver_id} is not online. Storing pending notification.`);
-            if (!pendingNotifications.has(receiver_id)) {
-                pendingNotifications.set(receiver_id, []);
+    
+        const { sender_id, receiver_id, content, content_type, timestamp } = data;
+        const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+    
+        // Save the message to the database
+        db.query(
+            'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
+            [sender_id, receiver_id, content, content_type, formattedTimestamp],
+            (err, results) => {
+                if (err) {
+                    console.error('Database error:', err);
+                    return;
+                }
+                console.log('Message inserted with ID:', results.insertId);
+    
+                // Check if the receiver is online
+                const receiverSocketId = onlineUsers.get(receiver_id);
+                if (receiverSocketId) {
+                    io.to(receiverSocketId).emit('newMessage', {
+                        sender_id,
+                        content,
+                        content_type,
+                        timestamp: formattedTimestamp,
+                    });
+                    console.log(`Message sent to user ${receiver_id}`);
+                } else {
+                    console.log(`User ${receiver_id} is not online. Storing pending notification.`);
+                    if (!pendingNotifications.has(receiver_id)) {
+                        pendingNotifications.set(receiver_id, []);
+                    }
+                    pendingNotifications.get(receiver_id).push({
+                        sender_id,
+                        content,
+                        content_type,
+                        timestamp: formattedTimestamp,
+                    });
+                }
             }
-            pendingNotifications.get(receiver_id).push({
-                sender_id,
-                message: `New message from ${sender_id}`,
-                timestamp
-            });
-        }
-    });
+        );
+    });    
 
     socket.on('disconnect', () => {
         for (let [userId, socketId] of onlineUsers.entries()) {
@@ -304,40 +318,40 @@ server.listen(3000, () => {
     console.log('Server is running on http://localhost:3000/login');
 });
 
-app.post('/send-message', (req, res) => {
-    const { sender_id, receiver_id, content, content_type, timestamp } = req.body;
-    const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
-    console.log('Received message data:', req.body);
+// app.post('/send-message', (req, res) => {
+//     const { sender_id, receiver_id, content, content_type, timestamp } = req.body;
+//     const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+//     console.log('Received message data:', req.body);
 
-    db.query(
-        'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
-        [sender_id, receiver_id, content, content_type, formattedTimestamp],
-        (err, results) => {
-            if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({ success: false, error: 'Database error' });
-            }
-            console.log('Message inserted with ID:', results.insertId);
+//     db.query(
+//         'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
+//         [sender_id, receiver_id, content, content_type, formattedTimestamp],
+//         (err, results) => {
+//             if (err) {
+//                 console.error('Database error:', err);
+//                 return res.status(500).json({ success: false, error: 'Database error' });
+//             }
+//             console.log('Message inserted with ID:', results.insertId);
 
-            io.emit('message', {
-                sender_id,
-                receiver_id,
-                content,
-                content_type,
-                timestamp: formattedTimestamp,
-            });
+//             io.emit('message', {
+//                 sender_id,
+//                 receiver_id,
+//                 content,
+//                 content_type,
+//                 timestamp: formattedTimestamp,
+//             });
 
-            const receiverSocketId = onlineUsers.get(receiver_id);
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit('notify', {
-                    senderId: sender_id,
-                    message: `New message from ${sender_id}`,
-                });
-                console.log(`Notification sent to user ${receiver_id} (socket ID: ${receiverSocketId})`);
-            } else {
-                console.log(`User ${receiver_id} is not online. Notification skipped.`);
-            }
-            res.json({ success: true });
-        }
-    );
-});
+//             const receiverSocketId = onlineUsers.get(receiver_id);
+//             if (receiverSocketId) {
+//                 io.to(receiverSocketId).emit('notify', {
+//                     senderId: sender_id,
+//                     message: `New message from ${sender_id}`,
+//                 });
+//                 console.log(`Notification sent to user ${receiver_id} (socket ID: ${receiverSocketId})`);
+//             } else {
+//                 console.log(`User ${receiver_id} is not online. Notification skipped.`);
+//             }
+//             res.json({ success: true });
+//         }
+//     );
+// });

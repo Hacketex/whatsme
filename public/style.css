@@ -81,25 +81,27 @@ body {
     background-color: #fafafa;
 }
 
-.message {
-    margin-bottom: 10px;
-    padding: 10px;
-    border-radius: 10px;
-    background-color: #ececec;
-    color: #333;
-    display: inline-block;
-    max-width: 80%;
+.sender {
+    background-color: #d1f7d6; /* Light green for sender messages */
+    text-align: right;
 }
 
-.message.user {
-    background-color: #d1ffd1;
+.receiver {
+    background-color: #f1f1f1; /* Light gray for receiver messages */
+    text-align: left;
+}
+
+.message {
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
 }
 
 .timestamp {
-    font-size: 12px;
-    color: #777;
-    margin-top: 5px;
+    font-size: 0.8em;
+    color: gray;
 }
+
 
 /* Chat Input */
 .chat-footer {
