@@ -50,7 +50,7 @@ db.connect((err) => {
 });
 
 function handleMessage(data) {
-    const { sender_id, receiver_id, content, content_type, timestamp } = data;
+    const { sender_id, receiver_id, content, content_type = 'text', timestamp } = data;
 
     console.log("Received message data:", data);
 
@@ -237,15 +237,15 @@ io.on('connection', (socket) => {
     socket.on('sendMessage', (data) => {
         console.log('Message received:', data);
     
-        const { sender_id, receiver_id, content, content_type, timestamp } = data;
-        const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+        const { sender_id, receiver_id, content, content_type = 'text', timestamp } = data;
 
-                // Check if sender and receiver IDs are the same
-                if (sender_id === receiver_id) {
-                    console.log(`Rejected message from user ${sender_id} to themselves.`);
-                    socket.emit('errorMessage', { error: "You cannot send a message to yourself." });
-                    return;
-                }
+        if (!sender_id || !receiver_id || !content || !timestamp) {
+            console.error('Invalid message data:', data);
+            socket.emit('errorMessage', { error: 'Invalid message data provided.' });
+            return;
+        }
+    
+        const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
     
         // Save the message to the database
         db.query(
@@ -253,36 +253,43 @@ io.on('connection', (socket) => {
             [sender_id, receiver_id, content, content_type, formattedTimestamp],
             (err, results) => {
                 if (err) {
-                    console.error('Database error:', err);
+                    console.error('Database error while saving message:', err);
+                    socket.emit('errorMessage', { error: 'Failed to save message. Please try again.' });
                     return;
                 }
-                console.log('Message inserted with ID:', results.insertId);
+    
+                console.log('Message saved with ID:', results.insertId);
+    
+                // Emit the message back to the sender
+                const messageData = {
+                    id: results.insertId,
+                    sender_id,
+                    receiver_id,
+                    content,
+                    content_type,
+                    timestamp: formattedTimestamp,
+                };
+    
+                socket.emit('newMessage', messageData);
     
                 // Check if the receiver is online
                 const receiverSocketId = onlineUsers.get(receiver_id);
                 if (receiverSocketId) {
-                    io.to(receiverSocketId).emit('newMessage', {
-                        sender_id,
-                        content,
-                        content_type,
-                        timestamp: formattedTimestamp,
-                    });
-                    console.log(`Message sent to user ${receiver_id}`);
+                    io.to(receiverSocketId).emit('newMessage', messageData);
+                    console.log(`Message sent to user ${receiver_id} online.`);
                 } else {
                     console.log(`User ${receiver_id} is not online. Storing pending notification.`);
+    
+                    // Store pending notification
                     if (!pendingNotifications.has(receiver_id)) {
                         pendingNotifications.set(receiver_id, []);
                     }
-                    pendingNotifications.get(receiver_id).push({
-                        sender_id,
-                        content,
-                        content_type,
-                        timestamp: formattedTimestamp,
-                    });
+                    pendingNotifications.get(receiver_id).push(messageData);
                 }
             }
         );
-    });    
+    });
+    
 
     socket.on('disconnect', () => {
         for (let [userId, socketId] of onlineUsers.entries()) {

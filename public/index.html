@@ -61,11 +61,14 @@
             console.log('Connection failed:', error);
         });
 
-        socket.on('newMessage', (message) => {
-            if (!document.querySelector(`[data-id="${message.id}"]`)) {
-                displayMessage(message);
-            }
-        });
+        // socket.on('newMessage', (message) => {
+        //     // if (!document.querySelector(`[data-id="${message.id}"]`)) {
+        //     //     displayMessage(message);
+        //     // }
+        //     if (!document.querySelector(`[data-id="${message.id}"]`)) {
+        //         // displayMessage(message);
+        //     }
+        // });
 
         sendMessageForm.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -73,11 +76,12 @@
             if (!messageText) return;
 
             const message = {
-                sender_id: loggedInUserId,
-                receiver_id: loggedInUserId === 9 ? 10 : 9,
-                content: messageText,
-                timestamp: new Date().toISOString()
-            };
+            sender_id: loggedInUserId,
+            receiver_id: loggedInUserId === 9 ? 10 : 9,
+            content: messageText,
+            content_type: 'text', // Default to 'text'
+            timestamp: new Date().toISOString(),
+        };
 
             socket.emit('sendMessage', message);
             displayMessage(message);
@@ -255,20 +259,7 @@
             messageInput.value = '';
         });
 
-        socket.on('sendMessage', (message) => {
-            // Save message to database logic here
-            io.emit('newMessage', message); // Broadcast to all users
-        });
 
-
-        // WebSocket listener for new messages
-        socket.on('newMessage', async (message) => {
-            const username = await getUsername(message.sender_id);
-            console.log(`New message from ${username}:`, message.content);
-
-            // Update the UI with the new message
-            displayMessage(message, username);
-        });
 
         // socket.on('newMessage', (message) => {
         //     const username = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
