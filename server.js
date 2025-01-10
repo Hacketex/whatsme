@@ -239,6 +239,13 @@ io.on('connection', (socket) => {
     
         const { sender_id, receiver_id, content, content_type, timestamp } = data;
         const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
+
+                // Check if sender and receiver IDs are the same
+                if (sender_id === receiver_id) {
+                    console.log(`Rejected message from user ${sender_id} to themselves.`);
+                    socket.emit('errorMessage', { error: "You cannot send a message to yourself." });
+                    return;
+                }
     
         // Save the message to the database
         db.query(

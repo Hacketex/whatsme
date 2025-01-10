@@ -43,7 +43,8 @@
         const sendMessageForm = document.getElementById('send-message-form');
         const typingIndicator = document.getElementById('typing-indicator');
         const username = localStorage.getItem('username') || 'Anonymous';
-        const loggedInUserId = localStorage.getItem('userId');
+        // const loggedInUserId = localStorage.getItem('userId');
+        const loggedInUserId = parseInt(localStorage.getItem('userId'), 10);
     
         document.getElementById('username-display').textContent = username;
     
@@ -61,7 +62,9 @@
         });
 
         socket.on('newMessage', (message) => {
-            displayMessage(message);
+            if (!document.querySelector(`[data-id="${message.id}"]`)) {
+                displayMessage(message);
+            }
         });
 
         sendMessageForm.addEventListener('submit', (e) => {
@@ -242,12 +245,13 @@
             const newMessage = {
                 sender_id: loggedInUserId,
                 receiver_id: (loggedInUserId == 9) ? 10 : 9,
-                content: messageText,
+                user_id: loggedInUserId,
+                content: messageInput.value.trim(),
                 content_type: 'text',
                 timestamp: new Date().toISOString()
             };
     
-            socket.emit('sendMessage', newMessage);
+            socket.emit('sendMessage', { sender_id, receiver_id, content });
             messageInput.value = '';
         });
 
@@ -266,26 +270,27 @@
             displayMessage(message, username);
         });
 
-        socket.on('newMessage', (message) => {
-            const username = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
-            displayMessage(message, username);
-        });
+        // socket.on('newMessage', (message) => {
+        //     const username = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
+        //     displayMessage(message, username);
+        // });
 
 
         // Function to display a new message in the chat UI
         function displayMessage(message, username) {
             const messageElement = document.createElement('div');
+            messageElement.dataset.id = message.id;
             messageElement.classList.add('message');
 
-            const senderClass = message.sender_id === loggedInUserId ? 'sender' : 'receiver';
+            // const senderClass = message.sender_id === loggedInUserId ? 'sender' : 'receiver';
+            const sender = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
             const timestamp = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             messageElement.innerHTML = `
-                <div class="${senderClass}">
-                    <strong>${username}:</strong> ${message.content}<br>
+                <div class="${message.sender_id === loggedInUserId ? 'sender' : 'receiver'}">
+                    <strong>${sender}:</strong> ${message.content}<br>
                     <span class="timestamp">${timestamp}</span>
-                </div>
-            `;
+                </div>`;
 
             messagesContainer.appendChild(messageElement);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
