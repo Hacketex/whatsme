@@ -234,13 +234,13 @@ io.on('connection', (socket) => {
         });
     });    
 
-    socket.on('sendMessage', (data) => {
-        console.log('Message received:', data);
+    socket.on('sendMessage', (message) => {
+        console.log('Message received:', message);
     
-        const { sender_id, receiver_id, content, content_type = 'text', timestamp } = data;
-
+        const { sender_id, receiver_id, content, content_type = 'text', timestamp } = message;
+    
         if (!sender_id || !receiver_id || !content || !timestamp) {
-            console.error('Invalid message data:', data);
+            console.error('Invalid message data:', message);
             socket.emit('errorMessage', { error: 'Invalid message data provided.' });
             return;
         }
@@ -260,7 +260,7 @@ io.on('connection', (socket) => {
     
                 console.log('Message saved with ID:', results.insertId);
     
-                // Emit the message back to the sender
+                // Create message object to broadcast
                 const messageData = {
                     id: results.insertId,
                     sender_id,
@@ -270,25 +270,37 @@ io.on('connection', (socket) => {
                     timestamp: formattedTimestamp,
                 };
     
-                socket.emit('newMessage', messageData);
+                // Emit message to sender
+                io.emit('newMessage', message);
     
-                // Check if the receiver is online
+                // Check if receiver is online
                 const receiverSocketId = onlineUsers.get(receiver_id);
                 if (receiverSocketId) {
                     io.to(receiverSocketId).emit('newMessage', messageData);
+    
+                    // Send push notification to receiver
+                    io.to(receiverSocketId).emit('notify', {
+                        senderId: sender_id,
+                        message: `New message from ${sender_id}`,
+                        timestamp: formattedTimestamp,
+                    });
                     console.log(`Message sent to user ${receiver_id} online.`);
                 } else {
                     console.log(`User ${receiver_id} is not online. Storing pending notification.`);
     
-                    // Store pending notification
+                    // Store notification for offline users
                     if (!pendingNotifications.has(receiver_id)) {
                         pendingNotifications.set(receiver_id, []);
                     }
-                    pendingNotifications.get(receiver_id).push(messageData);
+                    pendingNotifications.get(receiver_id).push({
+                        sender_id,
+                        message: `New message from ${sender_id}`,
+                        timestamp: formattedTimestamp,
+                    });
                 }
             }
         );
-    });
+    });    
     
 
     socket.on('disconnect', () => {

@@ -61,14 +61,14 @@
             console.log('Connection failed:', error);
         });
 
-        // socket.on('newMessage', (message) => {
-        //     // if (!document.querySelector(`[data-id="${message.id}"]`)) {
-        //     //     displayMessage(message);
-        //     // }
-        //     if (!document.querySelector(`[data-id="${message.id}"]`)) {
-        //         // displayMessage(message);
-        //     }
-        // });
+        socket.on('newMessage', (message) => {
+            console.log('New message received:', message);
+            // displayMessage(message);
+            // Avoid rendering duplicate messages by checking `data-id`
+            if (!document.querySelector(`[data-id="${message.id}"]`)) {
+                displayMessage(message);
+            }
+        });
 
         sendMessageForm.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -90,8 +90,10 @@
 
         function displayMessage(message) {
             const messageElement = document.createElement('div');
+            messageElement.dataset.id = message.id;
+
             const sender = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
-            const timestamp = new Date(message.timestamp).toLocaleTimeString();
+            const timestamp = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             messageElement.innerHTML = `
                 <div class="${message.sender_id === loggedInUserId ? 'sender' : 'receiver'}">
@@ -99,8 +101,23 @@
                     <span class="timestamp">${timestamp}</span>
                 </div>`;
             messagesContainer.appendChild(messageElement);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Auto-scroll
         }
+
+        messageInput.addEventListener('input', () => {
+            socket.emit('typing', username);
+        });
+
+        socket.on('typing', (user) => {
+            typingIndicator.textContent = `${user} is typing...`;
+            typingIndicator.style.display = 'block';
+
+            // Hide the indicator after 2 seconds of inactivity
+            clearTimeout(typingIndicator.timeout);
+            typingIndicator.timeout = setTimeout(() => {
+                typingIndicator.style.display = 'none';
+            }, 2000);
+        });
 
     
         // Service Worker Registration Logic
@@ -255,17 +272,9 @@
                 timestamp: new Date().toISOString()
             };
     
-            socket.emit('sendMessage', { sender_id, receiver_id, content });
+            socket.emit('sendMessage', { sender_id, receiver_id, content, timestamp: new Date().toISOString(),});
             messageInput.value = '';
         });
-
-
-
-        // socket.on('newMessage', (message) => {
-        //     const username = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
-        //     displayMessage(message, username);
-        // });
-
 
         // Function to display a new message in the chat UI
         function displayMessage(message, username) {
