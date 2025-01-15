@@ -24,7 +24,7 @@ body {
 
 /* Chat Header */
 .chat-header {
-    background-color: #f0f0f0;
+    background-color: #000000;
     padding: 10px;
     display: flex;
     justify-content: space-between;
@@ -46,6 +46,7 @@ body {
 
 .user-info {
     display: flex;
+    color: #fff;
     flex-direction: column;
 }
 
@@ -61,8 +62,8 @@ body {
 }
 
 .notification-button {
-    background-color: #00796b;
-    color: white;
+    background-color: #c713a0;
+    color: rgb(255, 255, 255);
     border: none;
     padding: 8px 16px;
     border-radius: 5px;
@@ -70,7 +71,7 @@ body {
 }
 
 .notification-button:hover {
-    background-color: #004d40;
+    background-color: #ae0fa6;
 }
 
 /* Chat Messages */
@@ -78,17 +79,32 @@ body {
     padding: 15px;
     flex: 1;
     overflow-y: auto;
-    background-color: #fafafa;
+    background-color: #000000;
+    font-size: small;
 }
 
 .sender {
-    background-color: #d1f7d6; /* Light green for sender messages */
     text-align: right;
+    /* align-self: flex-end; */
+    /* display: inline-block; */
+    background-color: #ff2da1;
+    word-wrap: break-word;
+    color: #fff;
+    padding: 4px;
+    border-radius: 8px;
 }
 
 .receiver {
-    background-color: #f1f1f1; /* Light gray for receiver messages */
     text-align: left;
+    align-self: flex-start; /* Align receiver's messages to the left */
+    display: inline-block;
+    background-color: #2f2f2f;
+    word-wrap: break-word;
+    color: #fff;
+    padding-top: 4px;
+    padding-left: 8px;
+    padding-right: 15px;
+    border-radius: 8px;
 }
 
 .message {
@@ -98,17 +114,18 @@ body {
 }
 
 .timestamp {
-    font-size: 0.8em;
-    color: gray;
+    font-size: 0.5em;
+    color: rgb(152, 152, 152);
 }
 
 
 /* Chat Input */
 .chat-footer {
+    align-self: stretch;
     display: flex;
     padding: 10px;
-    border-top: 1px solid #ddd;
-    background-color: #fff;
+    /* border-top: 1px solid #ddd; */
+    background-color: #4c4b4b;
 }
 
 #message-input {
@@ -120,7 +137,7 @@ body {
 }
 
 .send-button {
-    background-color: #00796b;
+    background-color: #950882;
     color: white;
     border: none;
     padding: 10px 20px;
@@ -129,7 +146,7 @@ body {
 }
 
 .send-button:hover {
-    background-color: #004d40;
+    background-color: #ffffff8f;
 }
 
 /* Logout Button */
@@ -137,9 +154,9 @@ body {
     background-color: #f44336;
     color: white;
     border: none;
-    padding: 8px 16px;
-    border-radius: 5px;
-    margin: 10px;
+    padding: 4px 8px;
+    /* border-radius: 5px;
+    margin: 10px; */
     cursor: pointer;
 }
 

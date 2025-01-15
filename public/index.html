@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time Chat</title>
+    <title>microbiology research journals</title>
     <script src="/socket.io/socket.io.js"></script>
     <script defer type="module" src="push-notifications.js"></script>
     <script defer src="service-worker.js"></script>
@@ -17,8 +17,8 @@
             <div class="profile-section">
                 <img src="profile.jpg" alt="Profile Picture" id="profile-pic">
                 <div class="user-info">
-                    <p id="username-display">John Doe</p>
-                    <p id="last-seen">Last seen at 10:45 AM</p>
+                    <p id="username-display">whatsME</p>
+                    <p id="last-seen"></p>
                 </div>
             </div>
             <button id="enable-notifications" class="notification-button">notify</button>
@@ -92,12 +92,12 @@
             const messageElement = document.createElement('div');
             messageElement.dataset.id = message.id;
 
-            const sender = message.sender_id === loggedInUserId ? 'You' : `User ${message.sender_id}`;
+            const senderClass = message.sender_id === loggedInUserId ? 'sender' : 'receiver';
             const timestamp = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             messageElement.innerHTML = `
-                <div class="${message.sender_id === loggedInUserId ? 'sender' : 'receiver'}">
-                    <strong>${sender}:</strong> ${message.content}<br>
+                <div class="${senderClass}">
+                    ${message.content}<br>
                     <span class="timestamp">${timestamp}</span>
                 </div>`;
             messagesContainer.appendChild(messageElement);
@@ -188,9 +188,10 @@
 
                 const timestamp = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+                messageElement.classList.add('message');
                 messageElement.innerHTML = `
                     <div class="${senderClass}">
-                        <strong>${sender}:</strong> ${msg.content}<br>
+                        ${msg.content}<br>
                         <span class="timestamp">${timestamp}</span>
                     </div>
                 `;

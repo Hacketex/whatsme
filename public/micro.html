@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomePage: microbiology research journals</title>
+    <!-- Link the external CSS file -->
+    <link rel="stylesheet" href="webtest.css">
+</head>
+<body>
+    <div class="header">
+        <!-- <h1>My Custom Search</h1> -->
+        <!-- <input type="text" placeholder="Search..." id="customSearch"> -->
+    </div>
+    <iframe class="iframe-container" src="https://www.microbiologyresearch.org/content/journal/jmm"></iframe>
+    <!-- Email Popup -->
+    <div class="popup" id="emailPopup">
+        <div class="popup-content">
+            <button class="close-button" id="closePopup">&times;</button>
+            <h2>Stay Updated!</h2>
+            <p>Enter your email to receive notifications about the latest updates.</p>
+            <input type="email" id="userEmail" placeholder="Enter your email">
+            <button id="submitEmail">Submit</button>
+        </div>
+    </div>
+    <script>
+        // Popup functionality
+        const popup = document.getElementById('emailPopup');
+        const emailInput = document.getElementById('userEmail');
+        const submitButton = document.getElementById('submitEmail');
+        const closeButton = document.getElementById('closePopup');
+
+        let popupShown = false;
+
+        // Show popup after 4 seconds
+        setTimeout(() => {
+            popup.style.display = 'flex';
+        }, 4000);
+
+        // Close popup on clicking the close button
+        closeButton.addEventListener('click', () => {
+            popup.style.display = 'none';
+        });
+
+        // Submit email
+        submitButton.addEventListener('click', () => {
+            const email = emailInput.value.trim();
+            if (email && validateEmail(email)) {
+                console.log('Email submitted:', email);
+                alert('Thank you for subscribing!');
+                popup.style.display = 'none';
+            } else {
+                alert('Please enter a valid email address.');
+            }
+        });
+
+        function validateEmail(email) {
+            const regex = /^[\w-\.]+@[\w-]+\.[a-z]{2,7}$/;
+            return regex.test(email);
+        }
+
+        // Close popup on click outside
+        window.addEventListener('click', (event) => {
+            if (event.target === popup) {
+                popup.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
