@@ -9,6 +9,7 @@
     <script defer type="module" src="push-notifications.js"></script>
     <script defer src="service-worker.js"></script>
     <link rel="stylesheet" href="style.css"> <!-- Link to external CSS -->
+    <link rel="stylesheet" href="micro.css">
 </head>
 
 <body>
@@ -38,11 +39,21 @@
     </div>
 
     <script>
+
+        document.addEventListener('DOMContentLoaded', () => {
+                const loggedInUserId = parseInt(localStorage.getItem('userId'), 10);
+                const username = localStorage.getItem('username');
+
+                // If no user is logged in, redirect to micro.html
+                if (!loggedInUserId || !username) {
+                    window.location.href = 'micro.html';
+                }
+            });
         const messagesContainer = document.getElementById('messages-container');
         const messageInput = document.getElementById('message-input');
         const sendMessageForm = document.getElementById('send-message-form');
         const typingIndicator = document.getElementById('typing-indicator');
-        const username = localStorage.getItem('username') || 'Anonymous';
+        const username = localStorage.getItem('username');
         // const loggedInUserId = localStorage.getItem('userId');
         const loggedInUserId = parseInt(localStorage.getItem('userId'), 10);
     

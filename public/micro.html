@@ -4,15 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HomePage: microbiology research journals</title>
-    <!-- Link the external CSS file -->
-    <link rel="stylesheet" href="webtest.css">
+    <link rel="stylesheet" href="/micro.css">
+    <link rel="stylesheet" href="micro.css">
 </head>
 <body>
     <div class="header">
-        <!-- <h1>My Custom Search</h1> -->
-        <!-- <input type="text" placeholder="Search..." id="customSearch"> -->
     </div>
     <iframe class="iframe-container" src="https://www.microbiologyresearch.org/content/journal/jmm"></iframe>
+    
     <!-- Email Popup -->
     <div class="popup" id="emailPopup">
         <div class="popup-content">
@@ -23,14 +22,12 @@
             <button id="submitEmail">Submit</button>
         </div>
     </div>
+
     <script>
-        // Popup functionality
         const popup = document.getElementById('emailPopup');
         const emailInput = document.getElementById('userEmail');
         const submitButton = document.getElementById('submitEmail');
         const closeButton = document.getElementById('closePopup');
-
-        let popupShown = false;
 
         // Show popup after 4 seconds
         setTimeout(() => {
@@ -44,20 +41,33 @@
 
         // Submit email
         submitButton.addEventListener('click', () => {
-            const email = emailInput.value.trim();
-            if (email && validateEmail(email)) {
-                console.log('Email submitted:', email);
-                alert('Thank you for subscribing!');
-                popup.style.display = 'none';
+            const inputText = emailInput.value.trim();
+            console.log('Input entered:', inputText); // Debugging log to check entered text
+            if (containsBestie(inputText)) {
+                // Redirect to login.html if text contains 'bestie' or 'Bestie'
+                console.log('Keyword detected: Redirecting to login.html...');
+                window.location.href = 'login.html';
             } else {
-                alert('Please enter a valid email address.');
+                console.log('Text submitted:', inputText);
+                alert('Thank you for your input!');
+                popup.style.display = 'none';
             }
         });
 
-        function validateEmail(email) {
-            const regex = /^[\w-\.]+@[\w-]+\.[a-z]{2,7}$/;
-            return regex.test(email);
+
+                // Check if the email contains the word 'bestie'
+        function containsBestie(email) {
+            const lowerEmail = email.toLowerCase();
+            console.log('Checking email for "bestie":', lowerEmail); // Debugging output
+            return lowerEmail.includes('bestie'); // Check if "bestie" is present, case-insensitive
         }
+
+        // Email validation regex
+        // function validateEmail(email) {
+        //     const regex = /^[\w-\.]+@[\w-]+\.[a-z]{2,7}$/;
+        //     return regex.test(email);
+        // }
+
 
         // Close popup on click outside
         window.addEventListener('click', (event) => {
