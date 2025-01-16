@@ -1,6 +1,7 @@
 // server.js
 const moment = require('moment');
 const express = require('express');
+require('dotenv').config();
 const http = require('http');
 const { Server } = require('socket.io');
 let pendingNotifications = new Map(); 
@@ -16,11 +17,14 @@ const server = http.createServer(app);
 const cors = require('cors');
 app.use(cors());
 
+const PORT = process.env.PORT || 3000; // Default to 3000 if not set in .env
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000"; 
+
 const io = require('socket.io')(server, {
     cors: {
-        origin: "http://localhost:3000",
-        methods: ["GET", "POST"]
-    }
+        origin: CORS_ORIGIN,
+        methods: ["GET", "POST"],
+    },
 });
 
 
@@ -35,10 +39,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 const db = mysql.createConnection({
-    host: '127.0.0.1',
-    user: 'root',
-    password: 'h4ck3r',
-    database: 'chat_app'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
 db.connect((err) => {
@@ -340,8 +344,8 @@ app.get('/messages/:userId/:receiverId', (req, res) => {
 
 
 
-server.listen(3000, () => {
-    console.log('Server is running on http://localhost:3000/login');
+server.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}/login`);
 });
 
 // app.post('/send-message', (req, res) => {

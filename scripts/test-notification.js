@@ -1,12 +1,13 @@
 const webPush = require('web-push');
+require('dotenv').config();
 
 const publicVapidKey = 'BGgKCQ9Od_ZuexQND6TSsZqa9O52uo82aAh08-YXXbbtC_jzUlKgKcRBMqmBez_xg43tAIo1fL1mI4yRAgXmKrs';
 const privateVapidKey = 'Xn8Z85i4UXAFiDltS1TUY4iqHJFZmtxcNfR-gt1ORFA';
 
 webPush.setVapidDetails(
-    'mailto:pratikdhole786@gmail.com',
-    publicVapidKey,
-    privateVapidKey
+    'mailto:your-email@example.com',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
 );
 
 const pushSubscription = {
