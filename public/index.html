@@ -92,6 +92,7 @@
             content: messageText,
             content_type: 'text', // Default to 'text'
             timestamp: new Date().toISOString(),
+            user_id: loggedInUserId,
         };
 
             socket.emit('sendMessage', message);

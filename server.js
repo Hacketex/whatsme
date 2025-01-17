@@ -53,7 +53,7 @@ pool.connect()
 module.exports = pool;
 
 function handleMessage(data) {
-    const { sender_id, receiver_id, content, content_type = 'text', timestamp } = data;
+    const { sender_id, receiver_id, content, content_type = 'text', timestamp, user_id } = data;
 
     console.log("Received message data:", data);
 
@@ -229,7 +229,7 @@ io.on('connection', (socket) => {
     socket.on('sendMessage', (message) => {
         console.log('Message received:', message);
     
-        const { sender_id, receiver_id, content, content_type = 'text', timestamp } = message;
+        const { sender_id, receiver_id, content, content_type = 'text', timestamp, user_id } = message;
     
         if (!sender_id || !receiver_id || !content || !timestamp) {
             console.error('Invalid message data:', message);
@@ -241,8 +241,8 @@ io.on('connection', (socket) => {
     
         // Save the message to the database
         pool.query(
-            'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES ($1, $2, $3, $4, $5)',
-            [sender_id, receiver_id, content, content_type, formattedTimestamp],
+            'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
+            [sender_id, receiver_id, content, content_type, formattedTimestamp, user_id],
             (err, results) => {
                 if (err) {
                     console.error('Database error while saving message:', err);
@@ -259,6 +259,7 @@ io.on('connection', (socket) => {
                     content,
                     content_type,
                     timestamp: formattedTimestamp,
+                    user_id,
                 };
     
                 // Emit message to sender
