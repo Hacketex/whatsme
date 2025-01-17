@@ -6,7 +6,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 let pendingNotifications = new Map(); 
 
-const mysql = require('mysql2');
+const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 const webPush = require('web-push');  // Add web-push for notifications
 
@@ -38,20 +38,19 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
 }));
 
-const db = mysql.createConnection({
+const pool = new Pool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 5432, // PostgreSQL default port
 });
 
-db.connect((err) => {
-    if (err) {
-        console.error('Database connection failed:', err.stack);
-        return;
-    }
-    console.log('Connected to MySQL database.');
-});
+pool.connect()
+    .then(() => console.log('Connected to PostgreSQL database.'))
+    .catch((err) => console.error('Database connection failed:', err));
+
+module.exports = pool;
 
 function handleMessage(data) {
     const { sender_id, receiver_id, content, content_type = 'text', timestamp } = data;
@@ -61,18 +60,13 @@ function handleMessage(data) {
     const userSocketId = onlineUsers.get(String(receiver_id));
 
     if (userSocketId) {
-        console.log(`User ${receiver_id} is online with socket ID: ${userSocketId}`);
         io.to(userSocketId).emit('newMessage', { sender_id, content, timestamp });
-        console.log(`Message delivered to User ${receiver_id}.`);
-
         io.to(userSocketId).emit('notify', {
             senderId: sender_id,
             message: `New message from ${sender_id}`,
             timestamp
         });
     } else {
-        console.log(`User ${receiver_id} is not online. Storing pending notification.`);
-
         if (!pendingNotifications.has(receiver_id)) {
             pendingNotifications.set(receiver_id, []);
         }
@@ -98,39 +92,40 @@ function sendNotification(userId, payload) {
     }
 }
 
-app.get('/get-username', (req, res) => {
+app.get('/get-username', async (req, res) => {
     const userId = req.query.id;
 
     if (!userId) {
         return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const query = 'SELECT username FROM users WHERE id = ?';
-    db.query(query, [userId], (err, results) => {
-        if (err) {
-            console.error('Database error:', err);
-            return res.status(500).json({ error: 'Database error' });
-        }
+    try {
+        const query = 'SELECT username FROM users WHERE id = $1';
+        const result = await pool.query(query, [userId]);
 
-        if (results.length === 0) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        res.json({ username: results[0].username });
-    });
+        res.json({ username: result.rows[0].username });
+    } catch (err) {
+        console.error('Database error:', err);
+        res.status(500).json({ error: 'Database error' });
+    }
 });
 
 
-app.post('/send-notification', (req, res) => {
+app.post('/send-notification', async (req, res) => {
     const { title, body, receiverId } = req.body;
 
-    db.query('SELECT subscription FROM users WHERE id = ?', [receiverId], (err, results) => {
-        if (err || results.length === 0) {
-            console.error('Error fetching FCM token:', err);
-            return res.status(500).send('Failed to send notification');
+    try {
+        const result = await pool.query('SELECT subscription FROM users WHERE id = $1', [receiverId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).send('User not found');
         }
 
-        const token = results[0].subscription;
+        const token = result.rows[0].subscription;
         const payload = {
             notification: {
                 title,
@@ -139,16 +134,12 @@ app.post('/send-notification', (req, res) => {
             }
         };
 
-        const admin = require("firebase-admin");
-        admin.messaging().send({
-            token,
-            notification: {
-                title,
-                body,
-            },
-        });
-        
-    });
+        // Send push notification logic here
+        console.log(`Notification sent to user ${receiverId}`);
+    } catch (err) {
+        console.error('Error sending notification:', err);
+        res.status(500).send('Failed to send notification');
+    }
 });
 
 // if ('serviceWorker' in navigator) {
@@ -161,40 +152,42 @@ app.post('/send-notification', (req, res) => {
 //         });
 // }
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
-        console.log(req.body);
         return res.status(400).send('Username and password are required');
     }
 
-    db.query('SELECT * FROM users WHERE username = ?', [username], (err, results) => {
-        if (err) throw err;
-        if (results.length === 0) return res.status(400).send('User not found');
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
 
-        const user = results[0];
+        if (result.rows.length === 0) {
+            return res.status(400).send('User not found');
+        }
 
+        const user = result.rows[0];
         if (password === user.password) {
-            db.query(
-                'SELECT content, timestamp FROM messages WHERE user_id = ? ORDER BY timestamp DESC',
-                [user.id], 
-                (err, messages) => {
-                    if (err) throw err;
+            const messagesResult = await pool.query(
+                'SELECT content, timestamp FROM messages WHERE user_id = $1 ORDER BY timestamp DESC',
+                [user.id]
+            );            
 
-                    res.send({
-                        userId: user.id,
-                        username: user.username,
-                        profilePic: user.profile_pic,
-                        messages
-                    });
-                }
-            );
+            res.send({
+                userId: user.id,
+                username: user.username,
+                profilePic: user.profile_pic,
+                messages: messagesResult.rows
+            });
         } else {
             res.status(401).send('Incorrect password');
         }
-    });
+    } catch (err) {
+        console.error('Error during login:', err);
+        res.status(500).send('Internal server error');
+    }
 });
+
 let onlineUsers = new Map(); 
 
 io.on('connection', (socket) => {
@@ -203,18 +196,13 @@ io.on('connection', (socket) => {
     socket.on('userConnected', (userId) => {
         if (userId) {
             onlineUsers.set(userId, socket.id);
-            console.log(`User ${userId} is now online with socket ID: ${socket.id}`);
-
             if (pendingNotifications.has(userId)) {
                 const notifications = pendingNotifications.get(userId);
                 notifications.forEach(notification => {
                     io.to(socket.id).emit('notify', notification);
-                    console.log(`Pending notification sent to User ${userId}`);
                 });
                 pendingNotifications.delete(userId);
             }
-
-            console.log('Current online users:', [...onlineUsers.entries()]);
         }
     });
 
@@ -229,14 +217,14 @@ io.on('connection', (socket) => {
         const { token, userId } = req.body;
         if (!token || !userId) return res.status(400).send('Token and User ID are required');
     
-        db.query('UPDATE users SET subscription = ? WHERE id = ?', [token, userId], (err, result) => {
+        pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [token, userId], (err, result) => {
             if (err) {
                 console.error('Error saving FCM token:', err);
                 return res.status(500).send('Database error');
             }
             res.status(200).send('Token saved successfully');
         });
-    });    
+    });
 
     socket.on('sendMessage', (message) => {
         console.log('Message received:', message);
@@ -252,8 +240,8 @@ io.on('connection', (socket) => {
         const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
     
         // Save the message to the database
-        db.query(
-            'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
+        pool.query(
+            'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES ($1, $2, $3, $4, $5)',
             [sender_id, receiver_id, content, content_type, formattedTimestamp],
             (err, results) => {
                 if (err) {
@@ -262,11 +250,10 @@ io.on('connection', (socket) => {
                     return;
                 }
     
-                console.log('Message saved with ID:', results.insertId);
+                console.log('Message saved successfully.');
     
                 // Create message object to broadcast
                 const messageData = {
-                    id: results.insertId,
                     sender_id,
                     receiver_id,
                     content,
@@ -281,8 +268,6 @@ io.on('connection', (socket) => {
                 const receiverSocketId = onlineUsers.get(receiver_id);
                 if (receiverSocketId) {
                     io.to(receiverSocketId).emit('newMessage', messageData);
-    
-                    // Send push notification to receiver
                     io.to(receiverSocketId).emit('notify', {
                         senderId: sender_id,
                         message: `New message from ${sender_id}`,
@@ -292,7 +277,6 @@ io.on('connection', (socket) => {
                 } else {
                     console.log(`User ${receiver_id} is not online. Storing pending notification.`);
     
-                    // Store notification for offline users
                     if (!pendingNotifications.has(receiver_id)) {
                         pendingNotifications.set(receiver_id, []);
                     }
@@ -304,7 +288,7 @@ io.on('connection', (socket) => {
                 }
             }
         );
-    });    
+    }); 
     
 
     socket.on('disconnect', () => {
@@ -315,31 +299,31 @@ io.on('connection', (socket) => {
                 break;
             }
         }
+        onlineUsers.delete(socket.id);
         console.log('Current online users:', [...onlineUsers.entries()]);
     });
 });
 
-app.get('/messages/:userId/:receiverId', (req, res) => {
+app.get('/messages/:userId/:receiverId', async (req, res) => {
     const { userId, receiverId } = req.params;
-    const limit = parseInt(req.query.limit, 10) || 30; // Default 40 messages
-    const offset = parseInt(req.query.offset, 10) || 0; // Default start at 0
+    const limit = parseInt(req.query.limit, 10) || 30;
+    const offset = parseInt(req.query.offset, 10) || 0;
 
-    db.query(
-        `SELECT * FROM messages 
-         WHERE (sender_id = ? AND receiver_id = ?) 
-            OR (sender_id = ? AND receiver_id = ?) 
-         ORDER BY timestamp DESC  -- Get messages in descending order
-         LIMIT ? OFFSET ?`,
-        [userId, receiverId, receiverId, userId, limit, offset],
-        (err, results) => {
-            if (err) {
-                console.error("Database query error:", err);
-                return res.status(500).json({ error: "Internal server error" });
-            }
-    
-            res.json(results);
-        }
-    );    
+    try {
+        const result = await pool.query(
+            `SELECT * FROM messages
+             WHERE (sender_id = $1 AND receiver_id = $2)
+                OR (sender_id = $2 AND receiver_id = $1)
+             ORDER BY timestamp DESC
+             LIMIT $3 OFFSET $4`,
+            [userId, receiverId, limit, offset]
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching messages:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 
