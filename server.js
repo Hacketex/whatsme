@@ -142,15 +142,6 @@ app.post('/send-notification', async (req, res) => {
     }
 });
 
-// if ('serviceWorker' in navigator) {
-//     navigator.serviceWorker.register('/firebase-messaging-sw.js')
-//         .then((registration) => {
-//             console.log('Service Worker registered with scope:', registration.scope);
-//         })
-//         .catch((error) => {
-//             console.error('Service Worker registration failed:', error);
-//         });
-// }
 
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
@@ -333,41 +324,3 @@ app.get('/messages/:userId/:receiverId', async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://localhost:${PORT}/login`);
 });
-
-// app.post('/send-message', (req, res) => {
-//     const { sender_id, receiver_id, content, content_type, timestamp } = req.body;
-//     const formattedTimestamp = moment(timestamp).utc().format('YYYY-MM-DD HH:mm:ss');
-//     console.log('Received message data:', req.body);
-
-//     db.query(
-//         'INSERT INTO messages (sender_id, receiver_id, content, content_type, timestamp) VALUES (?, ?, ?, ?, ?)',
-//         [sender_id, receiver_id, content, content_type, formattedTimestamp],
-//         (err, results) => {
-//             if (err) {
-//                 console.error('Database error:', err);
-//                 return res.status(500).json({ success: false, error: 'Database error' });
-//             }
-//             console.log('Message inserted with ID:', results.insertId);
-
-//             io.emit('message', {
-//                 sender_id,
-//                 receiver_id,
-//                 content,
-//                 content_type,
-//                 timestamp: formattedTimestamp,
-//             });
-
-//             const receiverSocketId = onlineUsers.get(receiver_id);
-//             if (receiverSocketId) {
-//                 io.to(receiverSocketId).emit('notify', {
-//                     senderId: sender_id,
-//                     message: `New message from ${sender_id}`,
-//                 });
-//                 console.log(`Notification sent to user ${receiver_id} (socket ID: ${receiverSocketId})`);
-//             } else {
-//                 console.log(`User ${receiver_id} is not online. Notification skipped.`);
-//             }
-//             res.json({ success: true });
-//         }
-//     );
-// });
