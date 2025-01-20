@@ -18,7 +18,7 @@ const cors = require('cors');
 app.use(cors());
 
 const PORT = process.env.PORT || 3000; // Default to 3000 if not set in .env
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000"; 
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
 const io = require('socket.io')(server, {
     cors: {
@@ -191,6 +191,7 @@ app.post('/login', async (req, res) => {
 let onlineUsers = new Map(); 
 
 io.on('connection', (socket) => {
+    console.log(`[DEBUG] User connected: Socket ID - ${socket.id}`);
     console.log('A user connected:', socket.id);
 
     socket.on('userConnected', (userId) => {
@@ -329,7 +330,7 @@ app.get('/messages/:userId/:receiverId', async (req, res) => {
 
 
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://localhost:${PORT}/login`);
 });
 
